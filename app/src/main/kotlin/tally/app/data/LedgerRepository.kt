@@ -23,7 +23,18 @@ class LedgerRepository(
 
     fun observeAccounts(): Flow<List<AccountEntity>> = db.accountDao().observeActive()
 
+    /** Including deleted ones, for labelling old transactions. */
+    fun observeAllCategories(): Flow<List<CategoryEntity>> = db.categoryDao().observeAll()
+
+    fun observeAllAccounts(): Flow<List<AccountEntity>> = db.accountDao().observeAll()
+
+    fun observeTransactions(): Flow<List<TransactionEntity>> = transactions.observeActive()
+
     suspend fun getTransaction(id: String): TransactionEntity? = transactions.getById(id)
+
+    suspend fun deleteTransaction(id: String) = transactions.setDeleted(id, deleted = true, updatedAt = clock.millis())
+
+    suspend fun restoreTransaction(id: String) = transactions.setDeleted(id, deleted = false, updatedAt = clock.millis())
 
     /** Category uses inside [CategoryRanking.WINDOW_DAYS], for ordering the quick-entry chips. */
     suspend fun recentCategoryUses(): List<CategoryUse> {

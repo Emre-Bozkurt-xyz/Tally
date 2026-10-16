@@ -28,7 +28,20 @@ class SettingsRepository(context: Context, scope: CoroutineScope) {
         store.edit { it[LOG_ALL_PACKAGES] = enabled }
     }
 
+    /**
+     * Whether the Quick add tile is in Quick Settings. Apps can't query this, so the tile
+     * service records it when it's added, removed, or shown.
+     */
+    val quickAddTileAdded: StateFlow<Boolean> = store.data
+        .map { it[QUICK_ADD_TILE_ADDED] ?: false }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
+    suspend fun setQuickAddTileAdded(added: Boolean) {
+        store.edit { it[QUICK_ADD_TILE_ADDED] = added }
+    }
+
     private companion object {
         val LOG_ALL_PACKAGES = booleanPreferencesKey("log_all_packages")
+        val QUICK_ADD_TILE_ADDED = booleanPreferencesKey("quick_add_tile_added")
     }
 }

@@ -14,12 +14,12 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | --- | --- |
 | Scaffold (4.2) | Done |
 | Phase 0: raw logger | Installed and running on the phone (S24 Ultra, Android 16). Package names confirmed. **Purchase check still pending** (no fixtures yet). |
-| Phase 1: manual core | In progress. Done: schema v2 + seed data, quick-entry sheet, Quick Settings tile, launcher shortcut (all checked on the phone except saving from the lock screen). Next: ledger, month view, category manager, then the widget. |
+| Phase 1: manual core | Nearly done. Done: schema v2 + seed data, quick-entry sheet, Quick Settings tile (+ "Add" prompt on Setup), launcher shortcut, ledger, month view, category manager. Left: Glance widget, then the "done when" check. Ledger, month and category screens are installed but not yet checked on the phone. |
 | Phase 2 to 6 | Not started. Phase 2 waits for real RBC / wallet notifications. |
 
 What's verified so far:
-- `./gradlew :core:test`: 60 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking).
-- `./gradlew :app:testDebugUnitTest`: 22 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data, quick-entry save and edit, category tree).
+- `./gradlew :core:test`: 65 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary).
+- `./gradlew :app:testDebugUnitTest`: 29 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data, quick-entry save and edit, delete and undo, category tree, category edits).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
 - Debug build installed on the phone (`dev.emre.tally.debug`).
 
@@ -130,6 +130,8 @@ tally/
         TallyNavHost.kt
         theme/Theme.kt
         rawevents/              # RawEventsScreen, RawEventDetailScreen, RawEventExport (file + share sheet)
+        ledger/                 # LedgerScreen (start destination), MonthScreen, LedgerFormat
+        categories/             # CategoriesScreen (list + add/edit dialog)
         setup/                  # SetupScreen, SetupStatus (+ settings intents)
       quickentry/               # QuickEntryActivity, QuickEntrySheet, QuickEntryTileService, QuickAddShortcut
       widget/                   # later: Glance widget
@@ -200,6 +202,7 @@ The in-app **Setup** screen (gear icon on the raw events screen) is built ✅. I
 - Post notifications (`areNotificationsEnabled`).
 - Battery unrestricted (`PowerManager.isIgnoringBatteryOptimizations`).
 - Samsung "Never sleeping apps" (can't be detected; shown as a manual step).
+- Quick add tile: tracked by the tile service (`onTileAdded` / `onTileRemoved` / `onStartListening`, stored in DataStore); "Add" shows the system prompt via `StatusBarManager.requestAddTileService`.
 
 It also holds the "Log all packages" toggle and listener health (section 9).
 
@@ -455,9 +458,9 @@ Tasks:
 - [ ] Glance widget (4x2): this week's spend vs. weekly budget at the top, 4 pinned category chips below. Each chip uses `actionStartActivity<QuickEntryActivity>` with the category extra. Refresh via `GlanceAppWidget.updateAll()` after every write.
 
 **Screens**
-- [ ] Ledger: transactions grouped by day, swipe to delete (with undo snackbar), tap to edit. Becomes the start destination; raw events move behind a debug menu item.
-- [ ] Simple month view: total + per-category totals (plain list; charts come in Phase 6).
-- [ ] Category manager: add, rename, reorder, pin, set parent.
+- [x] Ledger: transactions grouped by day, swipe to delete (with undo snackbar), tap to edit. Becomes the start destination; raw events move behind a debug menu item. Overflow menu: Categories, Setup, Raw events. FAB opens quick entry. Day headers show the day's net spending.
+- [x] Simple month view: total + per-category totals (plain list; charts come in Phase 6). Logic in `core/report/MonthSummary`: net expenses (refunds subtract, transfers ignored), income separately, top-level categories with subcategory rows and a share bar.
+- [x] Category manager: add, rename, reorder, pin, set parent. `CategoryRepository`: names unique among siblings, no "/" (paths use it), two levels only, a parent with subcategories can't move or be deleted. Deletes are soft; old transactions keep the name. Star only shown on chip categories.
 
 **Done when:** from a locked phone, swipe down, tap tile, type amount, tap chip, and the transaction is saved in about 3 seconds. Same from the widget.
 
@@ -629,8 +632,8 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 ## 8. Testing strategy
 
-- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest` (60 tests).
-- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest` (22 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
+- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest` (65 tests).
+- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest` (29 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
 - **Golden fixtures** are real exported notifications (`RawEventExport` files) and CSV rows. Scrub card numbers beyond last4 before committing (the repo should still be private).
 - **Room migration tests** for every schema version, using the committed schema JSON in `app/schemas/`.
 - **Lint** (`./gradlew :app:lintDebug`) stays at zero issues; suppress only with a comment saying why.

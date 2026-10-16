@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import tally.app.AppContainer
 import tally.app.data.SourceStats
+import tally.app.quickentry.QuickEntryTileService
 import tally.app.ui.theme.OkGreen
 import tally.app.ui.theme.WarnAmber
 import tally.core.capture.WatchedPackages
@@ -59,6 +60,7 @@ fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
     }
     val status = remember(refresh) { SetupStatus.read(context) }
     val logAll by container.settings.logAllPackages.collectAsStateWithLifecycle()
+    val tileAdded by container.settings.quickAddTileAdded.collectAsStateWithLifecycle()
     val stats by remember { container.rawEvents.observeSourceStats() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
@@ -131,6 +133,13 @@ fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
                 detail = "Can't be checked from the app. Settings, Battery, Background usage " +
                     "limits, Never sleeping apps: add Tally.",
                 action = null,
+            )
+            CheckItem(
+                ok = tileAdded,
+                title = "Quick add tile",
+                detail = "Swipe down from the top right, tap Quick add, and log an expense in " +
+                    "a few taps, even from the lock screen.",
+                action = "Add" to { QuickEntryTileService.requestAdd(context) },
             )
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))

@@ -3,6 +3,7 @@ package tally.app.data
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -10,8 +11,18 @@ interface CategoryDao {
     @Insert
     suspend fun insertAll(categories: List<CategoryEntity>)
 
+    @Upsert
+    suspend fun upsertAll(categories: List<CategoryEntity>)
+
     @Query("SELECT * FROM categories WHERE NOT deleted ORDER BY sortOrder")
     fun observeActive(): Flow<List<CategoryEntity>>
+
+    /** Includes deleted categories, so old transactions still show their category name. */
+    @Query("SELECT * FROM categories")
+    fun observeAll(): Flow<List<CategoryEntity>>
+
+    @Query("SELECT * FROM categories WHERE NOT deleted")
+    suspend fun getActive(): List<CategoryEntity>
 
     /** Includes soft-deleted rows, so deleting every category never triggers a re-seed. */
     @Query("SELECT COUNT(*) FROM categories")
@@ -25,6 +36,10 @@ interface AccountDao {
 
     @Query("SELECT * FROM accounts WHERE NOT deleted ORDER BY name")
     fun observeActive(): Flow<List<AccountEntity>>
+
+    /** Includes deleted accounts, so old transactions still show their account name. */
+    @Query("SELECT * FROM accounts")
+    fun observeAll(): Flow<List<AccountEntity>>
 
     @Query("SELECT COUNT(*) FROM accounts")
     suspend fun countAll(): Int

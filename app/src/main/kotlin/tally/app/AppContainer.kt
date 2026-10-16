@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import tally.app.data.CategoryRepository
 import tally.app.data.DefaultData
 import tally.app.data.LedgerRepository
 import tally.app.data.RawEventRepository
@@ -19,6 +20,7 @@ class AppContainer(context: Context) {
     val rawEvents = RawEventRepository(database.rawEventDao())
     val settings = SettingsRepository(context, appScope)
     val ledger = LedgerRepository(database)
+    val categories = CategoryRepository(database)
 
     init {
         appScope.launch { DefaultData.seedIfEmpty(database) }

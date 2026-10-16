@@ -2,6 +2,7 @@ package tally.app.data
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -70,6 +71,18 @@ class LedgerRepositoryTest {
         assertEquals(original.occurredAt, stored.occurredAt)
         assertEquals(Source.MANUAL.name, stored.source)
         assertEquals(now.toEpochMilli(), stored.updatedAt)
+    }
+
+    @Test
+    fun `delete hides a transaction and undo brings it back`() = runTest {
+        val saved = ledger.saveQuickEntry(null, 425, coffee, cash, note = null)
+
+        ledger.deleteTransaction(saved.id)
+        assertNull(ledger.getTransaction(saved.id))
+        assertEquals(emptyList<TransactionEntity>(), ledger.observeTransactions().first())
+
+        ledger.restoreTransaction(saved.id)
+        assertEquals(listOf(saved.id), ledger.observeTransactions().first().map { it.id })
     }
 
     @Test
