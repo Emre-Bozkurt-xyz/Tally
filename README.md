@@ -13,16 +13,19 @@ automatically, with a quick-entry sheet for cash.
 
 ## Build
 
-Requires JDK 17+ and the Android SDK (Android Studio is easiest).
+Requires JDK 17+ and the Android SDK with platform 37 (an Android Studio recent enough for
+AGP 9.4 is easiest). Gradle 9.8 via the wrapper; Kotlin is AGP's built-in Kotlin.
 
 ```sh
-./gradlew :core:test          # fast, no Android needed
-./gradlew :app:installDebug   # installs "Tally (debug)" as dev.emre.tally.debug
+./gradlew :core:test                # fast, no Android needed
+./gradlew :app:testDebugUnitTest    # Robolectric: Room DAO, dedupe, extras dump
+./gradlew :app:lintDebug
+./gradlew :app:installDebug         # installs "Tally (debug)" as dev.emre.tally.debug
 ```
 
 `minSdk` is set to 34 in `app/build.gradle.kts`. Change it to your phone's API level.
 
-After the first build, commit the generated Room schema in `app/schemas/`.
+Room schema JSON is generated into `app/schemas/` on build; commit it with every schema change.
 
 ### Release signing
 

@@ -1,5 +1,6 @@
 package tally.app.ui.setup
 
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
@@ -8,6 +9,7 @@ import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.net.toUri
 import tally.app.capture.TallyNotificationListener
 
 /** One-time permissions a sideloaded build needs; re-checked every time the screen resumes. */
@@ -49,8 +51,10 @@ object SetupIntents {
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
     ) + appDetails(context)
 
+    // Play policy restricts this permission; Tally is sideloaded and needs it to keep capturing.
+    @SuppressLint("BatteryLife")
     fun batteryOptimization(context: Context): List<Intent> = listOf(
-        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
+        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri()),
     ) + appDetails(context)
 }
 
