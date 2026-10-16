@@ -57,6 +57,12 @@ android {
         resValues = true
     }
 
+    sourceSets {
+        // MigrationTestHelper reads the committed schema JSON from assets, and Robolectric only
+        // sees the app variant's merged assets (not the test source set's). Debug APK only.
+        getByName("debug").assets.directories.add("$projectDir/schemas")
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
@@ -104,5 +110,6 @@ dependencies {
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
     testImplementation(libs.kotlinx.coroutines.test)
 }

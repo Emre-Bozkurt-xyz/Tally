@@ -14,12 +14,12 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | --- | --- |
 | Scaffold (4.2) | Done |
 | Phase 0: raw logger | Installed and running on the phone (S24 Ultra, Android 16). Package names confirmed. **Purchase check still pending** (no fixtures yet). |
-| Phase 1: manual core | Next. Does not need fixtures. |
+| Phase 1: manual core | In progress. Schema v2 (all tables, v1 to v2 migration) and seed data done, verified on the phone. Next: quick-entry sheet. |
 | Phase 2 to 6 | Not started. Phase 2 waits for real RBC / wallet notifications. |
 
 What's verified so far:
 - `./gradlew :core:test`: 42 tests passing (amount parsing, money formatting, export format).
-- `./gradlew :app:testDebugUnitTest`: 10 Robolectric tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump).
+- `./gradlew :app:testDebugUnitTest`: 15 Robolectric tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
 - Debug build installed on the phone (`dev.emre.tally.debug`).
 
@@ -210,7 +210,7 @@ It also holds the "Log all packages" toggle and listener health (section 9).
 
 All IDs are UUID strings (generated on device, so sync never needs ID remapping). Every syncable table has `updatedAt: Long` (epoch ms) and `deleted: Boolean` (soft delete for sync).
 
-**Database v1 (built) has `raw_events` only.** Everything else arrives in Phase 1 through a real v1 to v2 migration.
+**Database v2 (built).** v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`, tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
 
 ```kotlin
 // Built (v1). Table "raw_events", indexed on receivedAt, sbnKey, source.
@@ -235,7 +235,7 @@ All IDs are UUID strings (generated on device, so sync never needs ID remapping)
 data class SourceStats(val source: String, val eventCount: Int, val lastReceivedAt: Long)
 ```
 
-Planned for v2 (Phase 1):
+Built in v2 (Phase 1). Table names: `transactions`, `splits`, `tags`, `transaction_tags`, `categories`, `accounts`, `merchants`, `aliases`, `rules`.
 
 ```kotlin
 @Entity data class TransactionEntity(
@@ -307,7 +307,8 @@ Planned for v2 (Phase 1):
     val deleted: Boolean = false,
 )
 
-// Plus: TagEntity, TransactionTagCrossRef, SplitEntity (transactionId, amountCents, categoryId, owedBy)
+// Plus: TagEntity (id, name), TransactionTagCrossRef (PK transactionId + tagId),
+// SplitEntity (transactionId, amountCents, categoryId, owedBy). All with updatedAt + deleted.
 ```
 
 The string enum columns store the `name` of the enums in `core/model/Enums.kt` (`Source`, `Kind`, `TransactionStatus`, `CategorySource`, `ParseStatus`). Never rename an enum entry.
@@ -438,8 +439,8 @@ Leave it running. Everything you buy from now on becomes test data.
 Tasks:
 
 **Schema**
-- [ ] Add all entities from section 5 via Room migration v1 to v2. Write the migration test (`room-testing` `MigrationTestHelper` against the committed `app/schemas/.../1.json`; Robolectric or instrumented).
-- [ ] Seed default accounts (RBC Visa, RBC Chequing, Cash) and a starter category tree on first run.
+- [x] Add all entities from section 5 via Room migration v1 to v2 (`AutoMigration`). Migration test on Robolectric with the driver-based `MigrationTestHelper` (the SupportSQLite one rejects absolute paths on Windows). Schemas are added to debug assets because Robolectric only reads the app variant's merged assets.
+- [x] Seed default accounts (RBC Visa, RBC Chequing, Cash) and a starter category tree on first run (`DefaultData`). Seeded ids are derived from the name and `updatedAt = 0`, so a reinstall + sync lines up with the synced rows and real edits win. Tree: Food (Groceries, Dining out, Delivery, Coffee, Convenience), Shopping (Online, In store), Transport (Transit, Rideshare), Bills (Phone, Subscriptions), Entertainment, Health. Pinned: Coffee, Convenience, Dining out, Groceries.
 
 **Quick-entry sheet**
 - [ ] `QuickEntryActivity` with a translucent theme (`windowIsTranslucent`, no title, dim background). Content is a Compose `ModalBottomSheet` that opens expanded.
@@ -630,7 +631,7 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 ## 8. Testing strategy
 
 - **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest` (42 tests).
-- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest` (10 tests). Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
+- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest` (15 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
 - **Golden fixtures** are real exported notifications (`RawEventExport` files) and CSV rows. Scrub card numbers beyond last4 before committing (the repo should still be private).
 - **Room migration tests** for every schema version, using the committed schema JSON in `app/schemas/`.
 - **Lint** (`./gradlew :app:lintDebug`) stays at zero issues; suppress only with a comment saying why.
