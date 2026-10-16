@@ -11,9 +11,12 @@ import tally.app.data.LedgerRepository
 import tally.app.data.RawEventRepository
 import tally.app.data.SettingsRepository
 import tally.app.data.TallyDatabase
+import tally.app.widget.QuickAddWidget
 
 /** Hand-rolled dependency container, created once in [TallyApplication.onCreate]. */
 class AppContainer(context: Context) {
+    private val appContext = context.applicationContext
+
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val database = TallyDatabase.build(context)
@@ -24,5 +27,6 @@ class AppContainer(context: Context) {
 
     init {
         appScope.launch { DefaultData.seedIfEmpty(database) }
+        appScope.launch { QuickAddWidget.refreshOnChanges(appContext, ledger) }
     }
 }

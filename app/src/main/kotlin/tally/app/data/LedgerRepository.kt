@@ -32,6 +32,9 @@ class LedgerRepository(
 
     suspend fun getTransaction(id: String): TransactionEntity? = transactions.getById(id)
 
+    suspend fun transactionsSince(since: Instant): List<TransactionEntity> =
+        transactions.getActiveSince(since.toEpochMilli())
+
     suspend fun deleteTransaction(id: String) = transactions.setDeleted(id, deleted = true, updatedAt = clock.millis())
 
     suspend fun restoreTransaction(id: String) = transactions.setDeleted(id, deleted = false, updatedAt = clock.millis())

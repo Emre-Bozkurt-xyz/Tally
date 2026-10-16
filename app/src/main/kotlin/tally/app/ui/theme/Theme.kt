@@ -8,7 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 // Our own palette; dynamic color stays off so the app looks the same on every phone.
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Color(0xFF1F5C4A),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFB8EBD6),
@@ -21,7 +21,7 @@ private val LightColors = lightColorScheme(
     surface = Color(0xFFF7FAF7),
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = Color(0xFF9CD4BA),
     onPrimary = Color(0xFF003828),
     primaryContainer = Color(0xFF005139),

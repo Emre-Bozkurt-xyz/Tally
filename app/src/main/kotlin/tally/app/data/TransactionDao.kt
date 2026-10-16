@@ -16,6 +16,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE NOT deleted ORDER BY occurredAt DESC")
     fun observeActive(): Flow<List<TransactionEntity>>
 
+    @Query("SELECT * FROM transactions WHERE NOT deleted AND occurredAt >= :since")
+    suspend fun getActiveSince(since: Long): List<TransactionEntity>
+
     /** Soft delete (and undo), so the change syncs. */
     @Query("UPDATE transactions SET deleted = :deleted, updatedAt = :updatedAt WHERE id = :id")
     suspend fun setDeleted(id: String, deleted: Boolean, updatedAt: Long)

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -199,8 +200,24 @@ fun QuickEntrySheet(
                 },
             )
 
+            // Preselected (from a widget button) or the current category (editing): one-tap save.
+            val selected = categories.find { it.id == selectedCategoryId }
+            if (selected != null) {
+                Button(
+                    onClick = { save(selected) },
+                    enabled = ready,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) {
+                    Text("Save · ${selected.name}", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+
             Text(
-                text = if (amountCents == 0L) "Enter an amount" else "Tap a category to save",
+                text = when {
+                    amountCents == 0L -> "Enter an amount"
+                    selected != null -> "Or tap a different category"
+                    else -> "Tap a category to save"
+                },
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
