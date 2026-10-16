@@ -34,6 +34,7 @@ abstract class TallyDatabase : RoomDatabase() {
     abstract fun rawEventDao(): RawEventDao
     abstract fun categoryDao(): CategoryDao
     abstract fun accountDao(): AccountDao
+    abstract fun transactionDao(): TransactionDao
 
     companion object {
         const val NAME = "tally.db"

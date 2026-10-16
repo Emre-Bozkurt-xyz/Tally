@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Tally" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Quick entry floats over whatever was on screen; the bottom sheet draws its own scrim. -->
+    <style name="Theme.Tally.QuickEntry">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

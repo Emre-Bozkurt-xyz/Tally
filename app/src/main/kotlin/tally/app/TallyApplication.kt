@@ -2,6 +2,7 @@ package tally.app
 
 import android.app.Application
 import android.content.Context
+import tally.app.quickentry.QuickAddShortcut
 
 class TallyApplication : Application() {
     lateinit var container: AppContainer
@@ -10,6 +11,7 @@ class TallyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        QuickAddShortcut.publish(this)
     }
 }
 

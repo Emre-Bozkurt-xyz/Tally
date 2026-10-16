@@ -14,12 +14,12 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | --- | --- |
 | Scaffold (4.2) | Done |
 | Phase 0: raw logger | Installed and running on the phone (S24 Ultra, Android 16). Package names confirmed. **Purchase check still pending** (no fixtures yet). |
-| Phase 1: manual core | In progress. Schema v2 (all tables, v1 to v2 migration) and seed data done, verified on the phone. Next: quick-entry sheet. |
+| Phase 1: manual core | In progress. Done: schema v2 + seed data, quick-entry sheet, Quick Settings tile, launcher shortcut (all checked on the phone except saving from the lock screen). Next: ledger, month view, category manager, then the widget. |
 | Phase 2 to 6 | Not started. Phase 2 waits for real RBC / wallet notifications. |
 
 What's verified so far:
-- `./gradlew :core:test`: 42 tests passing (amount parsing, money formatting, export format).
-- `./gradlew :app:testDebugUnitTest`: 15 Robolectric tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data).
+- `./gradlew :core:test`: 60 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking).
+- `./gradlew :app:testDebugUnitTest`: 22 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data, quick-entry save and edit, category tree).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
 - Debug build installed on the phone (`dev.emre.tally.debug`).
 
@@ -131,9 +131,8 @@ tally/
         theme/Theme.kt
         rawevents/              # RawEventsScreen, RawEventDetailScreen, RawEventExport (file + share sheet)
         setup/                  # SetupScreen, SetupStatus (+ settings intents)
-      quickentry/               # later: QuickEntryActivity (bottom sheet)
+      quickentry/               # QuickEntryActivity, QuickEntrySheet, QuickEntryTileService, QuickAddShortcut
       widget/                   # later: Glance widget
-      tile/                     # later: QuickSettings TileService
       sync/                     # later: SyncWorker (Phase 4)
     src/main/res/xml/           # file_paths.xml (FileProvider), data_extraction_rules.xml
     src/test/kotlin/...         # Robolectric: RawEventRepositoryTest, ExtrasJsonTest
@@ -443,16 +442,16 @@ Tasks:
 - [x] Seed default accounts (RBC Visa, RBC Chequing, Cash) and a starter category tree on first run (`DefaultData`). Seeded ids are derived from the name and `updatedAt = 0`, so a reinstall + sync lines up with the synced rows and real edits win. Tree: Food (Groceries, Dining out, Delivery, Coffee, Convenience), Shopping (Online, In store), Transport (Transit, Rideshare), Bills (Phone, Subscriptions), Entertainment, Health. Pinned: Coffee, Convenience, Dining out, Groceries.
 
 **Quick-entry sheet**
-- [ ] `QuickEntryActivity` with a translucent theme (`windowIsTranslucent`, no title, dim background). Content is a Compose `ModalBottomSheet` that opens expanded.
-- [ ] Custom on-screen numpad (Compose grid), not the system keyboard: no IME animation delay, and amounts entered as cents (typing `425` shows `$4.25`; display via `Money.format`).
-- [ ] Category chip row below the numpad: pinned categories first, then ordered by usage frequency in the current time-of-day bucket (morning / afternoon / evening / night) over the last 60 days.
-- [ ] Tapping a chip saves and finishes the activity. Optional note field collapsed behind a small icon. Account defaults to Cash for manual entries; long-press to change.
-- [ ] Accepts intent extras: preselected category, prefilled amount, existing transaction id (edit mode). Phase 2 reuses this for "Change".
-- [ ] `setShowWhenLocked(true)` so it works over the lock screen when launched from the tile.
+- [x] `QuickEntryActivity` with a translucent theme (`windowIsTranslucent`, no title, no window dim; the sheet draws its own scrim, and window animations are off so only the sheet animates). Content is a Compose `ModalBottomSheet` that opens expanded.
+- [x] Custom on-screen numpad (Compose grid), not the system keyboard: no IME animation delay, and amounts entered as cents (typing `425` shows `$4.25`; display via `Money.format`). Logic in `core/entry/AmountEntry` (max $99,999,999.99). Keys: 1 to 9, 00, 0, backspace (hold to clear).
+- [x] Category chip row below the numpad: pinned categories first, then ordered by usage frequency in the current time-of-day bucket (morning / afternoon / evening / night) over the last 60 days. Logic in `core/entry/CategoryRanking`; ties fall back to tree order. Chips are subcategories plus top-level categories without children.
+- [x] Tapping a chip saves and finishes the activity. Optional note field collapsed behind a small icon. Account defaults to Cash for manual entries; change it from the account dropdown at the top of the sheet (more discoverable than a long-press). Saving shows a toast "Saved $4.25 · Coffee".
+- [x] Accepts intent extras: preselected category, prefilled amount, existing transaction id (edit mode). Phase 2 reuses this for "Change". `QuickEntryActivity.intent(context, categoryId, amountCents, transactionId)`. Preselected or current category shows as a selected chip; tap it to save.
+- [x] `setShowWhenLocked(true)` so it works over the lock screen when launched from the tile. Opens over the lock screen; saving from there still needs a manual check.
 
 **Launch points**
-- [ ] Quick Settings tile: `TileService` whose `onClick` calls `startActivityAndCollapse(PendingIntent)` (the PendingIntent overload is required on API 34+).
-- [ ] App shortcut (long-press icon): static `shortcuts.xml` entry "Quick add".
+- [x] Quick Settings tile: `TileService` whose `onClick` calls `startActivityAndCollapse(PendingIntent)` (the PendingIntent overload is required on API 34+).
+- [x] App shortcut (long-press icon) "Quick add": published at runtime with `ShortcutManagerCompat.pushDynamicShortcut` instead of a static `shortcuts.xml`, because static shortcuts hard-code the package name and the debug build uses `dev.emre.tally.debug`.
 - [ ] Glance widget (4x2): this week's spend vs. weekly budget at the top, 4 pinned category chips below. Each chip uses `actionStartActivity<QuickEntryActivity>` with the category extra. Refresh via `GlanceAppWidget.updateAll()` after every write.
 
 **Screens**
@@ -630,8 +629,8 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 ## 8. Testing strategy
 
-- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest` (42 tests).
-- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest` (15 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
+- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest` (60 tests).
+- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest` (22 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
 - **Golden fixtures** are real exported notifications (`RawEventExport` files) and CSV rows. Scrub card numbers beyond last4 before committing (the repo should still be private).
 - **Room migration tests** for every schema version, using the committed schema JSON in `app/schemas/`.
 - **Lint** (`./gradlew :app:lintDebug`) stays at zero issues; suppress only with a comment saying why.

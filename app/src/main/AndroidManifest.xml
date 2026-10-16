@@ -22,6 +22,26 @@
             </intent-filter>
         </activity>
 
+        <!-- Exported so launcher shortcuts can start it; extras only prefill the sheet. -->
+        <activity
+            android:name=".quickentry.QuickEntryActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Tally.QuickEntry"
+            android:windowSoftInputMode="adjustResize" />
+
+        <service
+            android:name=".quickentry.QuickEntryTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_quick_add"
+            android:label="@string/quick_add"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".capture.TallyNotificationListener"
             android:exported="true"
