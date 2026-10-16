@@ -23,7 +23,7 @@ AGP 9.4 is easiest). Gradle 9.8 via the wrapper; Kotlin is AGP's built-in Kotlin
 ./gradlew :app:installDebug         # installs "Tally (debug)" as dev.emre.tally.debug
 ```
 
-`minSdk` is set to 34 in `app/build.gradle.kts`. Change it to your phone's API level.
+`minSdk` is 36, matching the phone it runs on (Galaxy S24 Ultra, Android 16).
 
 Room schema JSON is generated into `app/schemas/` on build; commit it with every schema change.
 

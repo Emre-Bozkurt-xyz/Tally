@@ -13,14 +13,15 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase | State |
 | --- | --- |
 | Scaffold (4.2) | Done |
-| Phase 0: raw logger | Code done, builds, lint clean, unit-tested. **On-device check still pending** (install, grant access, buy something). |
-| Phase 1 to 6 | Not started |
+| Phase 0: raw logger | Installed and running on the phone (S24 Ultra, Android 16). Package names confirmed. **Purchase check still pending** (no fixtures yet). |
+| Phase 1: manual core | Next. Does not need fixtures. |
+| Phase 2 to 6 | Not started. Phase 2 waits for real RBC / wallet notifications. |
 
 What's verified so far:
 - `./gradlew :core:test`: 42 tests passing (amount parsing, money formatting, export format).
 - `./gradlew :app:testDebugUnitTest`: 10 Robolectric tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
-- Not run on a device or emulator yet.
+- Debug build installed on the phone (`dev.emre.tally.debug`).
 
 Changes from the original plan:
 - **Toolchain moved to current releases**: AGP 9.4.1 with built-in Kotlin (no `org.jetbrains.kotlin.android` plugin), Gradle 9.8.1, Kotlin 2.4.21, compile/target SDK 37. See section 2.
@@ -39,7 +40,7 @@ Changes from the original plan:
 2. **Local-first.** The phone's Room DB is the source of truth until the server exists. The app must be fully useful with no network.
 3. **Capture raw, parse later.** Every notification from a watched package is stored verbatim before any parsing. Parsers can be rewritten and re-run over history at any time.
 4. **Ship the raw logger on day one.** It collects real RBC / Samsung / Google Wallet notifications in the background while you build Phase 1, so by Phase 2 you have a week or more of fixtures.
-5. **minSdk = your phone.** No compat code for devices you don't own. Currently set to **34** in `app/build.gradle.kts`; change it to your phone's API level.
+5. **minSdk = your phone.** No compat code for devices you don't own. Set to **36** (Galaxy S24 Ultra, Android 16).
 6. **Money is `Long` cents. Time is `Instant` + the zone at capture.** No floats, no `LocalDateTime` in storage.
 7. **No DI framework.** A single `AppContainer` created in `Application.onCreate()` is enough for one app with one developer. Hilt adds build time and ceremony you don't need.
 
@@ -65,7 +66,7 @@ Versions are pinned in `gradle/libs.versions.toml`.
 | TOML | ktoml (`com.akuleshov7:ktoml-core`) | 0.7.1 | Fallback: tomlj if ktoml chokes on something |
 | Charts (on device) | Vico | 3.3.1 | Compose-native charts |
 | Settings | DataStore (Preferences) | 1.2.1 | Server URL, token, toggles |
-| SDK levels | | compile 37, target 37, min 34 | |
+| SDK levels | | compile 37, target 37, min 36 | |
 | Testing | JUnit Jupiter in `core`; Robolectric for app JVM tests | JUnit 6.1.3; Robolectric 4.17, JUnit 4.13.2 | Room migration tests can run on Robolectric too |
 
 ### Server (Phase 4)
@@ -169,7 +170,7 @@ Done. What exists:
 1. Gradle multi-module project: `core`, `app` (`server` later).
 2. Version catalog with: AGP, Kotlin, KSP, Compose BOM, Room, Glance, WorkManager, Navigation Compose, kotlinx.serialization, coroutines, ktoml, Vico, DataStore, JUnit (Jupiter + 4), Robolectric, androidx.test.
 3. `app/build.gradle.kts`:
-   - `namespace = "tally.app"`, `applicationId = "dev.emre.tally"`, `minSdk = 34`, `compileSdk = targetSdk = 37`.
+   - `namespace = "tally.app"`, `applicationId = "dev.emre.tally"`, `minSdk = 36`, `compileSdk = targetSdk = 37`.
    - Debug build type: `applicationIdSuffix = ".debug"`, app name "Tally (debug)". Release: app name "Tally", no minification.
    - Room: `room { schemaDirectory("$projectDir/schemas") }`.
    - Release signing reads from `~/.gradle/gradle.properties` and is only configured when `TALLY_KEYSTORE_PATH` is set:
@@ -410,7 +411,7 @@ Rough effort estimates assume evenings and weekends around school and RA hours.
 
 Tasks:
 - [x] Scaffold from section 4.2.
-- [ ] Install on phone, complete section 4.3.
+- [x] Install on phone, complete section 4.3.
 - [x] Room DB with `RawEventEntity` only (more tables come in Phase 1 via migration; this exercises the migration path early). Schema v1 committed.
 - [x] `TallyNotificationListener : NotificationListenerService`:
   - [x] Watched packages in `core`'s `WatchedPackages`. Starting guesses, **verify against what actually shows up**: RBC Mobile `com.rbc.mobile.android`, Samsung Wallet `com.samsung.android.spay`, Google Wallet `com.google.android.apps.walletnfcrel`.
@@ -424,7 +425,7 @@ Tasks:
 - [x] Setup checklist screen (section 4.3) with listener health.
 - [x] (Pulled forward from Phase 2) Amount parsing helper, `Amounts`, with tests.
 
-**Done when:** you buy something with Samsung Pay and with the physical card, and both the RBC alert and the wallet notification appear in the raw events screen. **Not yet checked on a device.**
+**Done when:** you buy something with Samsung Pay and with the physical card, and both the RBC alert and the wallet notification appear in the raw events screen. **Installed; purchase check still pending.**
 
 Leave it running. Everything you buy from now on becomes test data.
 
@@ -649,8 +650,8 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 ## 10. Open items to resolve during build
 
 - [ ] **Run Phase 0 on the phone** and confirm the "done when" check.
-- [ ] Set `minSdk` to the phone's actual API level (currently 34).
-- [ ] Exact package names for RBC, Samsung Wallet, Google Wallet (confirm in Phase 0 with "Log all packages"; fix `WatchedPackages` if they differ).
+- [x] Set `minSdk` to the phone's API level: 36.
+- [x] Exact package names for RBC, Samsung Wallet, Google Wallet: the guesses in `WatchedPackages` match what is installed (`pm list packages`). Samsung also has `com.samsung.android.spayfw` (framework); confirm which one posts the payment notification.
 - [ ] RBC alert wording for each event type (Phase 0 raw logs).
 - [ ] Whether wallets post group-summary notifications that duplicate the real one (`isGroupSummary` is recorded so parsers can decide).
 - [ ] Whether RBC's CSV has a stable transaction ID (Phase 5).

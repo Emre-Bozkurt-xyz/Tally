@@ -18,7 +18,7 @@ android {
     defaultConfig {
         applicationId = "dev.emre.tally"
         // Set to the phone's API level; no compat code for devices we don't own.
-        minSdk = 34
+        minSdk = 36
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
