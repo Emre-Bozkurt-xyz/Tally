@@ -208,6 +208,8 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
         oldRules.forEach { writes += Rows.rules.encode(it.copy(deleted = true, updatedAt = now), s.stored(Rows.rules.table, it.id)) }
 
         sync.write(writes, source)
+        // New aliases rename past transactions' merchants too, as the phone's import does.
+        RulesEdits(sync, clock).reapplyAliases(source)
         return result
     }
 }

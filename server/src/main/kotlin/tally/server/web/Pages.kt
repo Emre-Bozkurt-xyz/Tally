@@ -75,7 +75,7 @@ fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean
         meta(charset = "utf-8")
         meta(name = "viewport", content = "width=device-width, initial-scale=1")
         title("$title · Tally")
-        style { unsafe { +CSS } }
+        style { unsafe { +(CSS + RULES_CSS) } }
         script(src = HTMX) {}
         if (charts) script(src = CHART_JS) {}
     }
@@ -545,56 +545,6 @@ private fun FlowContent.statCard(label: String, count: Int, sub: String?) {
 private fun signed(cents: Long) = if (cents < 0) "+${Money.format(-cents)}" else Money.format(cents)
 
 // ---------- Rules ----------
-
-fun FlowContent.rules(s: Snapshot, toml: String) {
-    h1 { +"Rules" }
-    p("muted") {
-        +"Categories, aliases and rules as one file, the same one the phone's editor shows. "
-        +"Saving changes them everywhere on the next sync; old transactions keep their categories."
-    }
-    form(classes = "toml") {
-        textArea {
-            name = "toml"
-            attributes["spellcheck"] = "false"
-            attributes["aria-label"] = "Rules TOML"
-            +toml
-        }
-        div("actions") {
-            button(classes = "quiet") {
-                attributes["hx-post"] = "/rules/check"
-                attributes["hx-target"] = "#toml-result"
-                +"Check"
-            }
-            button(classes = "primary") {
-                attributes["hx-post"] = "/rules/save"
-                attributes["hx-target"] = "#toml-result"
-                +"Save"
-            }
-            div { id = "toml-result" }
-        }
-    }
-    h2 { +"Rules in order" }
-    val active = s.rules.filter { !it.deleted }.sortedBy { it.priority }
-    if (active.isEmpty()) p("muted") { +"No rules yet." }
-    table("compact") {
-        tbody {
-            active.forEach { r ->
-                tr {
-                    td { span("mono") { +r.merchantPattern } }
-                    td("muted") {
-                        +listOfNotNull(
-                            r.minAmountCents?.let { "≥ ${Money.format(it)}" },
-                            r.maxAmountCents?.let { "≤ ${Money.format(it)}" },
-                            r.accountId?.let { s.accountsById[it]?.name },
-                        ).joinToString(" · ")
-                    }
-                    td { +s.label(r.categoryId) }
-                    td { r.tagsCsv?.split(',')?.filter { it.isNotBlank() }?.forEach { span("tag") { +it.trim() } } }
-                }
-            }
-        }
-    }
-}
 
 fun tomlResultHtml(result: TomlImport, saved: Boolean): String = createHTML().div {
     when (result) {

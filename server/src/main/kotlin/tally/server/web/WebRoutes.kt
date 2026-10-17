@@ -4,6 +4,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.html.respondHtml
+import io.ktor.server.response.header
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.server.request.receiveMultipart
@@ -23,7 +24,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 
 /** The dashboard: Overview, Ledger, Inbox and Rules. Mounted behind Cloudflare Access. */
-fun Route.dashboard(edits: WebEdits, statements: StatementImport, zone: ZoneId, clock: Clock) {
+fun Route.dashboard(edits: WebEdits, rules: RulesEdits, statements: StatementImport, zone: ZoneId, clock: Clock) {
     fun today() = LocalDate.now(clock.withZone(zone))
     suspend fun snapshot() = withContext(Dispatchers.IO) { edits.snapshot() }
 
@@ -56,7 +57,7 @@ fun Route.dashboard(edits: WebEdits, statements: StatementImport, zone: ZoneId, 
 
     get("/rules") {
         val s = snapshot()
-        call.respondHtml { page("Rules", Tab.RULES, s, call.caller().name) { rules(s, edits.exportToml(s)) } }
+        call.respondHtml { page("Rules", Tab.RULES, s, call.caller().name) { rulesPage(s, rules, edits.exportToml(s)) } }
     }
 
     get("/statements") {
@@ -121,6 +122,90 @@ fun Route.dashboard(edits: WebEdits, statements: StatementImport, zone: ZoneId, 
         html(inboxDoneHtml(if (done) "Deleted." else "Already handled."))
     }
 
+    edit("/rules/try") {
+        val form = receiveParameters()
+        val s = snapshot()
+        html(trialHtml(s, rules.trial(s, form["raw"].orEmpty(), form["amount"].orEmpty())))
+    }
+
+    edit("/rules/replay/preview") {
+        val s = snapshot()
+        html(replayHtml(s, rules.replayPlan(s)))
+    }
+
+    edit("/rules/replay/apply") {
+        html(replayDoneHtml(withContext(Dispatchers.IO) { rules.applyReplay(source()) }))
+    }
+
+    edit("/rules/rule/save") {
+        val f = receiveParameters()
+        val form = RulesEdits.RuleForm(
+            id = f["id"]?.takeIf { it.isNotBlank() },
+            pattern = f["pattern"].orEmpty(),
+            min = f["min"].orEmpty(),
+            max = f["max"].orEmpty(),
+            accountId = f["account"]?.takeIf { it.isNotBlank() },
+            categoryId = f["category"].orEmpty(),
+            tags = f["tags"].orEmpty(),
+            ask = f["ask"] == "true",
+        )
+        val error = withContext(Dispatchers.IO) { rules.saveRule(form, source()) }
+        if (error != null) return@edit html(ruleRowHtml(snapshot(), form, error))
+        section("#rules-editor", rulesSectionHtml(snapshot(), rules))
+    }
+    for ((action, by) in listOf("up" to -1, "down" to 1)) {
+        edit("/rules/rule/{id}/$action") { id ->
+            withContext(Dispatchers.IO) { rules.moveRule(id, by, source()) }
+            section("#rules-editor", rulesSectionHtml(snapshot(), rules))
+        }
+        edit("/rules/alias/{id}/$action") { id ->
+            withContext(Dispatchers.IO) { rules.moveAlias(id, by, source()) }
+            section("#aliases-editor", aliasesSectionHtml(snapshot(), rules))
+        }
+        edit("/rules/category/{id}/$action") { id ->
+            withContext(Dispatchers.IO) { rules.moveCategory(id, by, source()) }
+            section("#categories-editor", categoriesSectionHtml(snapshot()))
+        }
+    }
+    edit("/rules/rule/{id}/delete") { id ->
+        withContext(Dispatchers.IO) { rules.deleteRule(id, source()) }
+        section("#rules-editor", rulesSectionHtml(snapshot(), rules))
+    }
+
+    edit("/rules/alias/save") {
+        val f = receiveParameters()
+        val id = f["id"]?.takeIf { it.isNotBlank() }
+        val error = withContext(Dispatchers.IO) { rules.saveAlias(id, f["pattern"].orEmpty(), f["name"].orEmpty(), source()) }
+        if (error != null) return@edit html(aliasRowHtml(id, f["pattern"].orEmpty(), f["name"].orEmpty(), error))
+        section("#aliases-editor", aliasesSectionHtml(snapshot(), rules))
+    }
+    edit("/rules/alias/{id}/delete") { id ->
+        withContext(Dispatchers.IO) { rules.deleteAlias(id, source()) }
+        section("#aliases-editor", aliasesSectionHtml(snapshot(), rules))
+    }
+
+    edit("/rules/category/add") {
+        val f = receiveParameters()
+        val parent = f["parent"]?.takeIf { it.isNotBlank() }
+        val error = withContext(Dispatchers.IO) { rules.addCategory(f["name"].orEmpty(), parent, source()) }
+        if (error != null) return@edit html(categoryAddErrorHtml(snapshot(), f["name"].orEmpty(), parent, error))
+        section("#categories-editor", categoriesSectionHtml(snapshot()))
+    }
+    edit("/rules/category/{id}/save") { id ->
+        val f = receiveParameters()
+        val parent = f["parent"]?.takeIf { it.isNotBlank() }
+        val name = f["name"].orEmpty()
+        val budget = f["budget"].orEmpty()
+        val pinned = f["pinned"] == "true"
+        val error = withContext(Dispatchers.IO) { rules.updateCategory(id, name, parent, budget, pinned, source()) }
+        if (error != null) return@edit html(categoryRowHtml(snapshot(), id, name, parent, budget, pinned, error))
+        section("#categories-editor", categoriesSectionHtml(snapshot()))
+    }
+    edit("/rules/category/{id}/delete") { id ->
+        val error = withContext(Dispatchers.IO) { rules.deleteCategory(id, source()) }
+        section("#categories-editor", categoriesSectionHtml(snapshot(), error))
+    }
+
     edit("/rules/check") {
         val text = receiveParameters()["toml"].orEmpty()
         val s = snapshot()
@@ -155,5 +240,12 @@ private fun ApplicationCall.source(): String =
 private val SOURCE = Regex("web-[A-Za-z0-9]{1,32}")
 
 private const val MAX_PDF_BYTES = 20L * 1024 * 1024
+
+/** A whole editor section, swapped in place of [target] (the row that was saved asked for itself). */
+private suspend fun ApplicationCall.section(target: String, fragment: String) {
+    response.header("HX-Retarget", target)
+    response.header("HX-Reswap", "outerHTML")
+    html(fragment)
+}
 
 private suspend fun ApplicationCall.html(fragment: String) = respondText(fragment, ContentType.Text.Html)

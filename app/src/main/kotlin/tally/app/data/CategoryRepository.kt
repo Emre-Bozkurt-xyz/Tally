@@ -2,6 +2,8 @@ package tally.app.data
 
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
+import tally.core.model.CategoryNode
+import tally.core.model.CategoryRules
 import java.time.Clock
 import java.util.UUID
 
@@ -87,27 +89,13 @@ class CategoryRepository(
     /** Past transactions keep pointing at it and still show its name. */
     suspend fun delete(id: String): String? = write { all ->
         val current = all.find { it.id == id } ?: return@write null
-        if (all.any { it.parentId == id }) {
-            return@write "Move or delete the subcategories of ${current.name} first"
-        }
+        CategoryRules.deleteError(all.map { CategoryNode(it.id, it.name, it.parentId) }, id)?.let { return@write it }
         dao.upsertAll(listOf(current.copy(deleted = true, updatedAt = clock.millis())))
         null
     }
 
-    private fun validate(all: List<CategoryEntity>, name: String, parentId: String?, editingId: String?): String? {
-        if (name.isEmpty()) return "Enter a name"
-        if ('/' in name) return "Names can't contain /"
-        if (parentId != null) {
-            val parent = all.find { it.id == parentId } ?: return "That parent no longer exists"
-            if (parent.parentId != null) return "Categories only go two levels deep"
-            if (parentId == editingId) return "A category can't be its own parent"
-            if (editingId != null && all.any { it.parentId == editingId }) {
-                return "A category with subcategories can't be moved under another one"
-            }
-        }
-        val clash = all.any { it.id != editingId && it.parentId == parentId && it.name.equals(name, ignoreCase = true) }
-        return if (clash) "$name already exists there" else null
-    }
+    private fun validate(all: List<CategoryEntity>, name: String, parentId: String?, editingId: String?): String? =
+        CategoryRules.validate(all.map { CategoryNode(it.id, it.name, it.parentId) }, name, parentId, editingId)
 
     /** Runs [block] with the active categories inside one write transaction. */
     private suspend fun write(block: suspend (List<CategoryEntity>) -> String?): String? =

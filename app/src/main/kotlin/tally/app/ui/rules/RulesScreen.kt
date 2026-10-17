@@ -29,6 +29,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,6 +53,7 @@ import tally.app.data.RuleEntity
 import tally.app.data.RulesRepository
 import tally.app.data.inTreeOrder
 import tally.core.model.Money
+import tally.core.rules.ReplayChange
 import java.util.UUID
 
 /** Rules in priority order (first match wins): reorder, edit, add. */
@@ -70,6 +73,8 @@ fun RulesScreen(
     val paths = remember(categories) { categoryPaths(categories) }
     val accountNames = remember(accounts) { accounts.associate { it.id to it.name } }
     var editing by remember { mutableStateOf<RuleEntity?>(null) }
+    var replay by remember { mutableStateOf<List<ReplayChange>?>(null) }
+    val snackbar = remember { SnackbarHostState() }
 
     Scaffold(
         topBar = {
@@ -79,11 +84,13 @@ fun RulesScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 },
                 actions = {
+                    TextButton(onClick = { scope.launch { replay = rules.replayPlan() } }) { Text("Apply") }
                     TextButton(onClick = onOpenAliases) { Text("Aliases") }
                     TextButton(onClick = onEditToml) { Text("TOML") }
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             FloatingActionButton(onClick = { editing = newRule(categories) }) {
                 Icon(Icons.Default.Add, contentDescription = "Add rule")
@@ -120,6 +127,33 @@ fun RulesScreen(
                 HorizontalDivider()
             }
         }
+    }
+
+    replay?.let { changes ->
+        val filed = changes.count { it.confirm }
+        AlertDialog(
+            onDismissRequest = { replay = null },
+            title = { Text(if (changes.isEmpty()) "Nothing to change" else "Apply rules to ${changes.size} transactions?") },
+            text = {
+                Text(
+                    if (changes.isEmpty()) {
+                        "Your rules don't match anything waiting in the inbox or without a category."
+                    } else {
+                        "$filed filed, ${changes.size - filed} suggested (ask rules) from the inbox and " +
+                            "uncategorized transactions. Ones you filed yourself aren't touched."
+                    },
+                )
+            },
+            confirmButton = {
+                if (changes.isNotEmpty()) {
+                    TextButton(onClick = {
+                        replay = null
+                        scope.launch { snackbar.showSnackbar("Updated ${rules.applyReplay(changes)} transactions") }
+                    }) { Text("Apply") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { replay = null }) { Text(if (changes.isEmpty()) "OK" else "Cancel") } },
+        )
     }
 
     editing?.let { rule ->

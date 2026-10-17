@@ -13,6 +13,7 @@ import tally.core.dedupe.DedupeCandidate
 import tally.core.model.ParseStatus
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
+import tally.core.normalize.MerchantIds
 import tally.core.normalize.MerchantNormalizer
 import tally.core.rules.Categorizer
 import tally.core.rules.Confidence
@@ -197,7 +198,7 @@ class CapturePipeline(
 
     private suspend fun merchantNamed(name: String, now: Long): MerchantEntity =
         merchants.findByName(name) ?: MerchantEntity(
-            id = UUID.randomUUID().toString(),
+            id = MerchantIds.forName(name),
             name = name,
             lastCategoryId = null,
             confirmCount = 0,

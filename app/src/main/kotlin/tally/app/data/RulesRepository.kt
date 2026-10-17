@@ -3,12 +3,21 @@ package tally.app.data
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import kotlinx.coroutines.flow.Flow
+import tally.core.model.CategoryKinds
+import tally.core.model.CategorySource
+import tally.core.model.Kind
+import tally.core.model.TransactionStatus
+import tally.core.normalize.MerchantIds
 import tally.core.normalize.MerchantNormalizer
 import tally.core.rules.AliasSpec
 import tally.core.rules.CategorySpec
+import tally.core.rules.ReplayCandidate
+import tally.core.rules.ReplayChange
 import tally.core.rules.Rule
+import tally.core.rules.RuleReplay
 import tally.core.rules.RuleSpec
 import tally.core.rules.RulesDocument
+import tally.core.rules.RulesEngine
 import tally.core.rules.RulesToml
 import tally.core.rules.TomlImport
 import java.time.Clock
@@ -105,9 +114,54 @@ class RulesRepository(
             for (ref in db.transactionDao().merchantRefs()) {
                 val name = normalizer.normalize(ref.merchantRaw)
                 val merchant = merchants.findByName(name)
-                    ?: MerchantEntity(UUID.randomUUID().toString(), name, null, 0, now).also { merchants.upsert(it) }
+                    ?: MerchantEntity(MerchantIds.forName(name), name, null, 0, now).also { merchants.upsert(it) }
                 if (merchant.id != ref.merchantId) db.transactionDao().setMerchant(ref.id, merchant.id, now)
             }
+        }
+    }
+
+    /**
+     * What your rules would do now to transactions waiting in the inbox or without a category
+     * (never ones you filed yourself): see [RuleReplay].
+     */
+    suspend fun replayPlan(): List<ReplayChange> {
+        val engine = RulesEngine(rules.getActive().map { it.toRule() })
+        val names = db.merchantDao().getAll().associate { it.id to it.name }
+        val candidates = db.transactionDao().getActiveSince(Long.MIN_VALUE).map { t ->
+            ReplayCandidate(
+                id = t.id,
+                merchant = t.merchantId?.let { names[it] },
+                amountCents = t.amountCents,
+                accountId = t.accountId,
+                categoryId = t.categoryId,
+                captured = t.status == TransactionStatus.CAPTURED.name,
+                transfer = t.kind == Kind.TRANSFER.name,
+            )
+        }
+        return RuleReplay.plan(candidates, engine)
+    }
+
+    /** Applies [replayPlan]'s changes: filed, or suggested and waiting in the inbox. Returns how many changed. */
+    suspend fun applyReplay(changes: List<ReplayChange>): Int = db.useWriterConnection { connection ->
+        connection.immediateTransaction {
+            val categories = db.categoryDao().getActive()
+            val now = clock.millis()
+            var changed = 0
+            for (change in changes) {
+                val t = db.transactionDao().getById(change.id) ?: continue
+                if (categories.none { it.id == change.categoryId }) continue
+                db.transactionDao().upsert(
+                    t.copy(
+                        categoryId = change.categoryId,
+                        categorySource = CategorySource.RULE.name,
+                        status = if (change.confirm) TransactionStatus.CONFIRMED.name else TransactionStatus.CAPTURED.name,
+                        kind = CategoryKinds.kindFor(Kind.valueOf(t.kind), t.amountCents, categories.isIncome(change.categoryId)).name,
+                        updatedAt = now,
+                    ),
+                )
+                changed++
+            }
+            changed
         }
     }
 

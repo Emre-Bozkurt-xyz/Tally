@@ -20,6 +20,9 @@ interface MerchantDao {
     /** Includes deleted merchants, so old transactions keep their name. */
     @Query("SELECT * FROM merchants")
     fun observeAll(): Flow<List<MerchantEntity>>
+
+    @Query("SELECT * FROM merchants")
+    suspend fun getAll(): List<MerchantEntity>
 }
 
 @Dao

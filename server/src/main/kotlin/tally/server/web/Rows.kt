@@ -4,7 +4,9 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.longOrNull
 import tally.core.sync.SyncChange
 
 // Mirrors of the phone's Room entities (app/src/main/kotlin/tally/app/data), field for field:
@@ -121,11 +123,15 @@ class RowType<T>(
 
     /**
      * The row as a [SyncChange]. Written over the stored JSON, so columns a newer phone has
-     * and this server doesn't know about survive the edit.
+     * and this server doesn't know about survive the edit. An edit is based on what was
+     * [stored], so it's stamped after it even when the clock hasn't moved on (two edits in
+     * one millisecond) or the stored row came from a phone whose clock runs a little ahead.
      */
     fun encode(row: T, stored: JsonObject?): SyncChange {
-        val fields = rowJson.encodeToJsonElement(serializer, row).jsonObject
-        return SyncChange(table, id(row), updatedAt(row), deleted(row), JsonObject((stored ?: emptyMap()) + fields))
+        val storedAt = (stored?.get("updatedAt") as? JsonPrimitive)?.longOrNull
+        val at = if (storedAt != null && storedAt >= updatedAt(row)) storedAt + 1 else updatedAt(row)
+        val fields = rowJson.encodeToJsonElement(serializer, row).jsonObject + ("updatedAt" to JsonPrimitive(at))
+        return SyncChange(table, id(row), at, deleted(row), JsonObject((stored ?: emptyMap()) + fields))
     }
 }
 

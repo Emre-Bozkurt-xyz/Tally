@@ -175,4 +175,17 @@ class RulesRepositoryTest {
         assertEquals(groceries, captured.transaction.categoryId)
         assertEquals(TransactionStatus.CAPTURED.name, captured.transaction.status)
     }
+
+    @Test
+    fun `rules written later file what is waiting, never what you filed`() = runTest {
+        val waiting = captureFoodieFruitie()
+        assertEquals(null, waiting.transaction.categoryId)
+        importOk(repo.exportToml() + "\n[[rule]]\nmerchant = 'Foodie Fruitie'\ncategory = \"Food/Groceries\"\n")
+        val changes = repo.replayPlan()
+        assertEquals(listOf(waiting.transaction.id), changes.map { it.id })
+        assertEquals(1, repo.applyReplay(changes))
+        val filed = db.transactionDao().getById(waiting.transaction.id)!!
+        assertEquals(groceries to TransactionStatus.CONFIRMED.name, filed.categoryId to filed.status)
+        assertTrue(repo.replayPlan().isEmpty())
+    }
 }

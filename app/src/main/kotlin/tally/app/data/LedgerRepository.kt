@@ -15,6 +15,7 @@ import tally.core.model.Money
 import tally.core.model.ParseStatus
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
+import tally.core.normalize.MerchantIds
 import tally.core.normalize.MerchantNormalizer
 import tally.core.report.OwedPart
 import java.time.Clock
@@ -169,7 +170,7 @@ class LedgerRepository(
         val now = clock.millis()
         val manual = existing == null || existing.source == Source.MANUAL.name
         // Money in: income under "Income", otherwise money back for that spending.
-        val kind = existing?.let { CategoryKinds.kindFor(Kind.valueOf(it.kind), amountCents, isIncomeCategory(categoryId)) }
+        val kind = existing?.let { CategoryKinds.kindFor(Kind.valueOf(it.kind), amountCents, db.categoryDao().getActive().isIncome(categoryId)) }
         val typed = merchantName?.trim()?.takeIf { manual }
         val merchant = typed?.takeIf { it.isNotEmpty() }?.let { merchantFor(it, now) }
         val transaction = existing?.copy(
@@ -245,13 +246,6 @@ class LedgerRepository(
     suspend fun openOwedParts(): List<OwedPart> =
         db.splitDao().getOwed().filter { it.settledAt == null }.map { OwedPart(it.id, it.owedBy!!, it.amountCents) }
 
-    private suspend fun isIncomeCategory(categoryId: String): Boolean {
-        val all = db.categoryDao().getActive()
-        val category = all.find { it.id == categoryId } ?: return false
-        val top = category.parentId?.let { parent -> all.find { it.id == parent } } ?: category
-        return CategoryKinds.isIncome(top.name)
-    }
-
     /** Known merchants for the quick entry suggestions: most confirmed first. */
     fun observeMerchantChoices(): Flow<List<MerchantEntity>> = db.merchantDao().observeAll()
         .map { all -> all.filter { !it.deleted }.sortedWith(compareByDescending<MerchantEntity> { it.confirmCount }.thenBy { it.name.lowercase() }) }
@@ -261,7 +255,7 @@ class LedgerRepository(
         val name = MerchantNormalizer(db.aliasDao().getActive().mapNotNull { it.toAlias() }).normalize(typed)
         val merchants = db.merchantDao()
         return merchants.findByName(name)
-            ?: MerchantEntity(UUID.randomUUID().toString(), name, null, 0, now).also { merchants.upsert(it) }
+            ?: MerchantEntity(MerchantIds.forName(name), name, null, 0, now).also { merchants.upsert(it) }
     }
 
     companion object {

@@ -14,11 +14,11 @@ import tally.core.model.Kind
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
 import tally.core.normalize.Alias
+import tally.core.normalize.MerchantIds
 import tally.core.normalize.MerchantNormalizer
 import tally.core.rules.Categorizer
 import tally.core.rules.Confidence
 import tally.core.rules.MerchantMemory
-import tally.core.rules.Rule
 import tally.core.rules.RulesEngine
 import tally.core.statement.MatchCandidate
 import tally.core.statement.RbcStatements
@@ -143,7 +143,7 @@ class StatementImport(
                 return@map ImportPlan.Added(line, base.copy(note = line.description), null)
             }
             val name = normalizer.normalize(line.merchant)
-            val merchant = merchantsByName.getOrPut(name) { MerchantRow(UUID.randomUUID().toString(), name, null, 0, now) }
+            val merchant = merchantsByName.getOrPut(name) { MerchantRow(MerchantIds.forName(name), name, null, 0, now) }
             // Money to and from people is asked about: memory suggests, only a plain rule files.
             val suggestion = categorizer.categorize(
                 name, line.amountCents, accountId, MerchantMemory(merchant.lastCategoryId, merchant.confirmCount), trustMemory = !line.person,
@@ -230,12 +230,6 @@ class StatementImport(
             UUID.nameUUIDFromBytes("tally:statement:$key:$n".toByteArray()).toString()
         }
     }
-
-    private fun RuleRow.toRule() = Rule(
-        id = id, priority = priority, merchantPattern = merchantPattern, minAmountCents = minAmountCents,
-        maxAmountCents = maxAmountCents, accountId = accountId, categoryId = categoryId,
-        tags = tagsCsv.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }, ask = ask,
-    )
 
     companion object {
         /** The PDF's text in reading order, which is what [RbcStatements] expects. */

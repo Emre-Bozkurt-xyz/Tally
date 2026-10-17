@@ -28,6 +28,7 @@ import tally.core.llm.CategorizeService
 import tally.core.llm.DailyLimitReached
 import tally.core.sync.SyncRequest
 import tally.core.sync.SyncServer
+import tally.server.web.RulesEdits
 import tally.server.web.StatementImport
 import tally.server.web.WebEdits
 import tally.server.web.dashboard
@@ -118,7 +119,7 @@ fun Application.tallyModule(
                 val caller = call.caller()
                 call.respond(MeResponse(caller.name, caller.kind.name))
             }
-            dashboard(WebEdits(sync, clock), StatementImport(sync, clock, zone, categorize, this@tallyModule), zone, clock)
+            dashboard(WebEdits(sync, clock), RulesEdits(sync, clock), StatementImport(sync, clock, zone, categorize, this@tallyModule), zone, clock)
         }
     }
 }
