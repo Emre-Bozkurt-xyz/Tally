@@ -1,5 +1,11 @@
 package tally.app.ui.rules
 
+import tally.app.ui.theme.TallyIcons
+import tally.app.ui.components.PillStyle
+import tally.app.ui.components.PillButton
+import tally.app.ui.components.CircleIconButton
+import tally.app.ui.components.AddButton
+import tally.app.ui.components.TallyTopBar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -21,7 +26,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +37,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -78,23 +81,15 @@ fun RulesScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Rules") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-                actions = {
-                    TextButton(onClick = { scope.launch { replay = rules.replayPlan() } }) { Text("Apply") }
-                    TextButton(onClick = onOpenAliases) { Text("Aliases") }
-                    TextButton(onClick = onEditToml) { Text("TOML") }
-                },
-            )
+            TallyTopBar("Rules", onBack) {
+                PillButton("Apply", onClick = { scope.launch { replay = rules.replayPlan() } }, style = PillStyle.Soft, height = 40.dp)
+                CircleIconButton(TallyIcons.Tag, "Aliases", onOpenAliases)
+                CircleIconButton(TallyIcons.Code, "Edit as TOML", onEditToml)
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { editing = newRule(categories) }) {
-                Icon(Icons.Default.Add, contentDescription = "Add rule")
-            }
+            AddButton("Add rule", onClick = { editing = newRule(categories) })
         },
     ) { padding ->
         LazyColumn(contentPadding = padding) {

@@ -59,7 +59,8 @@ object CaptureNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_quick_add)
+            .setSmallIcon(R.drawable.ic_stat_tally)
+            .setColor(ContextCompat.getColor(context, R.color.accent))
             .setContentTitle(title)
             .setContentText(text)
             .setWhen(transaction.occurredAt)

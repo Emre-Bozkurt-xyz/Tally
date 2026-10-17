@@ -1,6 +1,23 @@
 package tally.app.quickentry
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.staggeredgrid.LazyHorizontalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import tally.app.ui.components.AmountText
+import tally.app.ui.components.bleed
+import tally.app.ui.components.MonoLabel
+import tally.app.ui.components.PillButton
+import tally.app.ui.components.PillChip
+import tally.app.ui.components.SoftTextField
+import tally.app.ui.theme.Tally
+import tally.app.ui.theme.TallyIcons
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,31 +25,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -172,41 +176,57 @@ fun QuickEntrySheet(
     ModalBottomSheet(
         onDismissRequest = { onFinished(null) },
         sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        dragHandle = { SheetHandle() },
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 20.dp)
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                MonoLabel(
+                    when {
+                        !isEdit -> "New expense"
+                        canTypeMerchant -> "Edit"
+                        else -> existing?.merchantRaw ?: "Edit"
+                    },
+                    Modifier.weight(1f),
+                )
                 AccountPicker(account, accounts, onPick = { accountId = it.id })
-                Spacer(Modifier.weight(1f))
-                if (isEdit && !canTypeMerchant) {
-                    Text(existing?.merchantRaw ?: "Editing", style = MaterialTheme.typography.labelLarge)
-                }
-                if (canTypeMerchant) {
-                    IconButton(onClick = { merchantOpen = !merchantOpen }) {
-                        Icon(Icons.Default.ShoppingCart, contentDescription = "Add a merchant")
-                    }
-                }
-                IconButton(onClick = { noteOpen = !noteOpen }) {
-                    Icon(Icons.Default.Edit, contentDescription = "Add a note")
-                }
             }
 
-            Text(
-                text = Money.format(amountCents),
+            AmountText(
+                cents = amountCents,
                 style = MaterialTheme.typography.displayMedium,
-                color = if (amountCents == 0L) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+                color = if (amountCents == 0L) Tally.colors.faint else MaterialTheme.colorScheme.onSurface,
+                centsScale = 0.55f,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
+                text = Money.format(amountCents),
             )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (canTypeMerchant) {
+                    PillChip(
+                        text = merchant.trim().ifEmpty { "Merchant" },
+                        selected = merchantOpen,
+                        onClick = { merchantOpen = !merchantOpen },
+                        leading = TallyIcons.Store,
+                    )
+                }
+                PillChip(
+                    text = note.trim().ifEmpty { "Note" }.let { if (it.length > 18) it.take(17) + "…" else it },
+                    selected = noteOpen,
+                    onClick = { noteOpen = !noteOpen },
+                    leading = TallyIcons.Note,
+                )
+            }
 
             if (merchantOpen && canTypeMerchant) {
                 MerchantField(
@@ -221,6 +241,35 @@ fun QuickEntrySheet(
                 )
             }
             if (noteOpen) NoteField(note, onChange = { note = it })
+
+            val selected = categories.find { it.id == selectedCategoryId }
+            MonoLabel(
+                when {
+                    amountCents == 0L -> "Enter an amount"
+                    selected != null -> "Or tap another category"
+                    else -> "Tap a category to save"
+                },
+            )
+            // Three rows that scroll sideways, most used first, so the numpad stays on screen.
+            LazyHorizontalStaggeredGrid(
+                rows = StaggeredGridCells.Fixed(if (chips.size > 8) 3 else 2),
+                horizontalItemSpacing = 8.dp,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                modifier = Modifier
+                    .bleed(20.dp)
+                    .fillMaxWidth()
+                    .height(if (chips.size > 8) 130.dp else 84.dp),
+            ) {
+                items(chips, key = { it.id }) { category ->
+                    PillChip(
+                        text = category.name,
+                        selected = category.id == selectedCategoryId,
+                        onClick = { save(category) },
+                        enabled = ready,
+                    )
+                }
+            }
 
             Numpad(
                 onDigit = { digit ->
@@ -238,38 +287,30 @@ fun QuickEntrySheet(
             )
 
             // Preselected (from a widget button) or the current category (editing): one-tap save.
-            val selected = categories.find { it.id == selectedCategoryId }
             if (selected != null) {
-                Button(
+                PillButton(
+                    text = "Save to ${selected.name}",
                     onClick = { save(selected) },
                     enabled = ready,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                ) {
-                    Text("Save · ${selected.name}", style = MaterialTheme.typography.titleMedium)
-                }
-            }
-
-            Text(
-                text = when {
-                    amountCents == 0L -> "Enter an amount"
-                    selected != null -> "Or tap a different category"
-                    else -> "Tap a category to save"
-                },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                chips.forEach { category ->
-                    FilterChip(
-                        selected = category.id == selectedCategoryId,
-                        onClick = { save(category) },
-                        label = { Text(category.name) },
-                        enabled = ready,
-                    )
-                }
+                    icon = TallyIcons.Check,
+                    height = 56.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
+}
+
+/** The small pill at the top of a sheet. */
+@Composable
+internal fun SheetHandle() {
+    Box(
+        Modifier
+            .padding(top = 10.dp, bottom = 6.dp)
+            .size(width = 36.dp, height = 4.dp)
+            .clip(CircleShape)
+            .background(Tally.colors.faint.copy(alpha = 0.5f)),
+    )
 }
 
 @Composable
@@ -280,10 +321,14 @@ private fun AccountPicker(
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { open = true }, enabled = accounts.size > 1) {
-            Text(current?.name ?: "No account")
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-        }
+        PillChip(
+            text = current?.name ?: "No account",
+            selected = false,
+            onClick = { open = true },
+            enabled = accounts.size > 1,
+            leading = TallyIcons.Wallet,
+            trailing = TallyIcons.Down,
+        )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             accounts.forEach { account ->
                 DropdownMenuItem(
@@ -306,12 +351,12 @@ private fun MerchantField(
     onPick: (MerchantEntity) -> Unit,
 ) {
     val focus = remember { FocusRequester() }
-    OutlinedTextField(
+    SoftTextField(
         value = merchant,
         onValueChange = onChange,
-        placeholder = { Text("Merchant (optional)") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        placeholder = "Merchant (optional)",
+        leading = TallyIcons.Store,
+        modifier = Modifier.focusRequester(focus),
     )
     LaunchedEffect(Unit) { focus.requestFocus() }
     val query = merchant.trim()
@@ -320,8 +365,8 @@ private fun MerchantField(
             .take(MERCHANT_SUGGESTIONS)
     }
     if (matches.isNotEmpty()) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            matches.forEach { m -> SuggestionChip(onClick = { onPick(m) }, label = { Text(m.name) }) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            matches.forEach { m -> PillChip(m.name, selected = false, onClick = { onPick(m) }) }
         }
     }
 }
@@ -331,12 +376,12 @@ private const val MERCHANT_SUGGESTIONS = 4
 @Composable
 private fun NoteField(note: String, onChange: (String) -> Unit) {
     val focus = remember { FocusRequester() }
-    OutlinedTextField(
+    SoftTextField(
         value = note,
         onValueChange = onChange,
-        placeholder = { Text("Note") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        placeholder = "Note",
+        leading = TallyIcons.Note,
+        modifier = Modifier.focusRequester(focus),
     )
     LaunchedEffect(Unit) { focus.requestFocus() }
 }
@@ -345,22 +390,22 @@ private fun NoteField(note: String, onChange: (String) -> Unit) {
 @Composable
 private fun Numpad(onDigit: (Int) -> Unit, onBackspace: () -> Unit, onClear: () -> Unit) {
     val rows = listOf(listOf(1, 2, 3), listOf(4, 5, 6), listOf(7, 8, 9))
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { digit ->
                     NumpadKey(label = "$digit", onClick = { onDigit(digit) })
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             NumpadKey(label = "00", onClick = {
                 onDigit(0)
                 onDigit(0)
             })
             NumpadKey(label = "0", onClick = { onDigit(0) })
             NumpadKey(
-                icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                icon = TallyIcons.Backspace,
                 description = "Backspace, hold to clear",
                 onClick = onBackspace,
                 onLongClick = onClear,
@@ -378,21 +423,19 @@ private fun RowScope.NumpadKey(
     description: String? = null,
     onLongClick: (() -> Unit)? = null,
 ) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    Box(
         modifier = Modifier
             .weight(1f)
-            .height(56.dp)
+            .height(54.dp)
+            .clip(RoundedCornerShape(18.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null)
-            } else {
-                Text(label.orEmpty(), style = MaterialTheme.typography.headlineSmall)
-            }
+        if (icon != null) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp))
+        } else {
+            Text(label.orEmpty(), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Normal))
         }
     }
 }

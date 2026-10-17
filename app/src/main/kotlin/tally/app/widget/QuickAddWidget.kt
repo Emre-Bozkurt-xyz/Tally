@@ -4,13 +4,13 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.clickable
@@ -33,8 +33,10 @@ import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.layout.width
-import androidx.glance.material3.ColorProviders
+import androidx.glance.color.ColorProvider as DayNight
+import androidx.glance.text.FontFamily
 import androidx.glance.text.FontWeight
+import androidx.glance.unit.ColorProvider
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import kotlinx.coroutines.CancellationException
@@ -50,8 +52,6 @@ import tally.app.data.LedgerRepository
 import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.ledger.ledgerEntries
-import tally.app.ui.theme.DarkColors
-import tally.app.ui.theme.LightColors
 import tally.core.model.Money
 import tally.core.report.BudgetStatus
 import tally.core.report.BudgetedCategory
@@ -62,15 +62,24 @@ import java.time.ZoneId
 import java.time.temporal.WeekFields
 import java.util.Locale
 
-private val colors = ColorProviders(light = LightColors, dark = DarkColors)
+/** The app's paper and ink, day and night. Glance can't use the app's fonts, so labels use the system mono. */
+private object WidgetColors {
+    val background = DayNight(day = Color(0xFFF4F2ED), night = Color(0xFF1B1A17))
+    val ink = DayNight(day = Color(0xFF1B1A17), night = Color(0xFFEFEBE3))
+    val muted = DayNight(day = Color(0xFF6E6A62), night = Color(0xFFA29D93))
+    val chip = DayNight(day = Color(0xFFE9E6DF), night = Color(0xFF292724))
+    val accent = DayNight(day = Color(0xFF2F6B4E), night = Color(0xFF8CCBA6))
+    val warn = DayNight(day = Color(0xFFA3661A), night = Color(0xFFE0A85A))
+    val over = DayNight(day = Color(0xFFB3432E), night = Color(0xFFEE917D))
+    val review = DayNight(day = Color(0xFFF4E3C8), night = Color(0xFF3D2C14))
+    val onReview = DayNight(day = Color(0xFF4A2D06), night = Color(0xFFF4D9AE))
+}
 
 /** Home screen widget: this week's spending, plus the starred categories as quick-add buttons. */
 class QuickAddWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = WidgetData.load(context.appContainer.ledger)
-        provideContent {
-            GlanceTheme(colors = colors) { Content(context, data) }
-        }
+        provideContent { Content(context, data) }
     }
 
     companion object {
@@ -123,16 +132,16 @@ class QuickAddWidget : GlanceAppWidget() {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(GlanceTheme.colors.widgetBackground)
-                .cornerRadius(20.dp)
-                .padding(12.dp),
+                .background(WidgetColors.background)
+                .cornerRadius(android.R.dimen.system_app_widget_background_radius)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             Header(context, data.week, data.toReview)
-            Spacer(GlanceModifier.height(8.dp))
+            Spacer(GlanceModifier.height(10.dp))
             if (data.categories.isEmpty()) {
                 Text(
                     "Star categories in Tally to show them here",
-                    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 13.sp),
+                    style = TextStyle(color = WidgetColors.muted, fontSize = 13.sp),
                 )
             } else {
                 // Two rows of two: four names in one row don't fit at 4x2.
@@ -165,44 +174,70 @@ class QuickAddWidget : GlanceAppWidget() {
                         .defaultWeight()
                         .clickable(actionStartActivity(Intent(context, MainActivity::class.java))),
                 ) {
-                    Text(
-                        if (toReview > 0) "This week · $toReview to review" else "This week",
-                        style = TextStyle(
-                            color = if (toReview > 0) GlanceTheme.colors.primary else GlanceTheme.colors.onSurfaceVariant,
-                            fontSize = 12.sp,
-                        ),
-                    )
-                    val budget = week.budgetCents?.let { " of ${Money.format(it)}" }.orEmpty()
-                    Text(
-                        Money.format(week.spentCents) + budget,
-                        style = TextStyle(
-                            color = GlanceTheme.colors.onSurface,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("THIS WEEK", style = mono(WidgetColors.muted))
+                        if (toReview > 0) {
+                            Spacer(GlanceModifier.width(8.dp))
+                            Text(
+                                "$toReview TO REVIEW",
+                                style = mono(WidgetColors.onReview),
+                                modifier = GlanceModifier
+                                    .background(WidgetColors.review)
+                                    .cornerRadius(8.dp)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    Spacer(GlanceModifier.height(2.dp))
+                    val amount = Money.format(week.spentCents)
+                    val dot = amount.lastIndexOf('.')
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            amount.substring(0, dot),
+                            style = TextStyle(color = WidgetColors.ink, fontSize = 28.sp, fontWeight = FontWeight.Medium),
+                        )
+                        Text(
+                            amount.substring(dot),
+                            style = TextStyle(color = WidgetColors.muted, fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                            modifier = GlanceModifier.padding(bottom = 3.dp),
+                        )
+                        week.budgetCents?.let { budget ->
+                            Text(
+                                "  of ${Money.format(budget)}",
+                                style = TextStyle(color = WidgetColors.muted, fontSize = 13.sp),
+                                modifier = GlanceModifier.padding(bottom = 4.dp),
+                            )
+                        }
+                    }
+                }
+                Box(
+                    modifier = GlanceModifier
+                        .size(44.dp)
+                        .background(WidgetColors.ink)
+                        .cornerRadius(22.dp)
+                        .clickable(actionStartActivity(quickAddIntent(context, categoryId = null))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        provider = ImageProvider(R.drawable.ic_plus),
+                        contentDescription = "Quick add",
+                        colorFilter = ColorFilter.tint(WidgetColors.background),
+                        modifier = GlanceModifier.size(22.dp),
                     )
                 }
-                Image(
-                    provider = ImageProvider(R.drawable.ic_quick_add),
-                    contentDescription = "Quick add",
-                    colorFilter = ColorFilter.tint(GlanceTheme.colors.primary),
-                    modifier = GlanceModifier
-                        .size(36.dp)
-                        .clickable(actionStartActivity(quickAddIntent(context, categoryId = null))),
-                )
             }
             val budget = week.budgetCents
             if (budget != null && budget > 0) {
-                Spacer(GlanceModifier.height(4.dp))
+                Spacer(GlanceModifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = (week.spentCents.toFloat() / budget).coerceIn(0f, 1f),
-                    modifier = GlanceModifier.fillMaxWidth(),
+                    modifier = GlanceModifier.fillMaxWidth().height(5.dp).cornerRadius(3.dp),
                     color = when (BudgetStatus.of(week.spentCents, budget)) {
-                        BudgetStatus.OK -> GlanceTheme.colors.primary
-                        BudgetStatus.WARNING -> GlanceTheme.colors.tertiary
-                        BudgetStatus.OVER -> GlanceTheme.colors.error
+                        BudgetStatus.OK -> WidgetColors.accent
+                        BudgetStatus.WARNING -> WidgetColors.warn
+                        BudgetStatus.OVER -> WidgetColors.over
                     },
-                    backgroundColor = GlanceTheme.colors.surfaceVariant,
+                    backgroundColor = WidgetColors.chip,
                 )
             }
         }
@@ -214,8 +249,8 @@ class QuickAddWidget : GlanceAppWidget() {
             modifier = GlanceModifier
                 .defaultWeight()
                 .fillMaxSize()
-                .background(GlanceTheme.colors.secondaryContainer)
-                .cornerRadius(16.dp)
+                .background(WidgetColors.chip)
+                .cornerRadius(18.dp)
                 .clickable(actionStartActivity(quickAddIntent(context, category.id))),
             contentAlignment = Alignment.Center,
         ) {
@@ -223,13 +258,16 @@ class QuickAddWidget : GlanceAppWidget() {
                 category.name,
                 maxLines = 1,
                 style = TextStyle(
-                    color = GlanceTheme.colors.onSecondaryContainer,
+                    color = WidgetColors.ink,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                 ),
             )
         }
     }
+
+    private fun mono(color: ColorProvider) =
+        TextStyle(color = color, fontSize = 10.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace)
 
     /** A distinct data URI per button, so each gets its own PendingIntent. */
     private fun quickAddIntent(context: Context, categoryId: String?): Intent =

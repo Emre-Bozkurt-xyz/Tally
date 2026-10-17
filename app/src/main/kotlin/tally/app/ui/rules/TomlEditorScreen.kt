@@ -1,5 +1,8 @@
 package tally.app.ui.rules
 
+import tally.app.ui.components.PillStyle
+import tally.app.ui.components.PillButton
+import tally.app.ui.components.TallyTopBar
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,17 +11,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,14 +49,9 @@ fun TomlEditorScreen(rules: RulesRepository, onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Rules as TOML") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-                actions = {
-                    TextButton(onClick = {
-                        val current = text ?: return@TextButton
+            TallyTopBar("Rules as TOML", onBack) {
+                    PillButton("Check", onClick = {
+                        val current = text ?: return@PillButton
                         scope.launch {
                             when (val result = rules.validateToml(current)) {
                                 is TomlImport.Ok -> {
@@ -75,18 +67,19 @@ fun TomlEditorScreen(rules: RulesRepository, onBack: () -> Unit) {
                                 }
                             }
                         }
-                    }) { Text("Validate") }
-                    TextButton(
+                    }, style = PillStyle.Soft, height = 40.dp)
+                    PillButton(
+                        "Save",
                         enabled = text != null && text == validText,
                         onClick = {
-                            val current = text ?: return@TextButton
+                            val current = text ?: return@PillButton
                             scope.launch {
                                 if (rules.importToml(current) is TomlImport.Ok) onBack()
                             }
                         },
-                    ) { Text("Save") }
-                },
-            )
+                        height = 40.dp,
+                    )
+            }
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {

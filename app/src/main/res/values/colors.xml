@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#1F5C4A</color>
+    <!-- The same paper, ink and green as the Compose theme (ui/theme/Theme.kt). -->
+    <color name="ic_launcher_background">#1B1A17</color>
+    <color name="paper">#F4F2ED</color>
+    <color name="accent">#2F6B4E</color>
 </resources>

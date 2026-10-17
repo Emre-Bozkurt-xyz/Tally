@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Tally" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Paper behind the first frame and the splash, so there's no white or green flash. -->
+    <style name="Theme.Tally" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:windowSplashScreenBackground">@color/paper</item>
+    </style>
 
     <!-- Quick entry floats over whatever was on screen; the bottom sheet draws its own scrim. -->
     <style name="Theme.Tally.QuickEntry">

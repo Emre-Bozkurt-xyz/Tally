@@ -1,5 +1,6 @@
 package tally.app.ui.rawevents
 
+import tally.app.ui.components.TallyTopBar
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,15 +8,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -45,14 +41,7 @@ fun RawEventDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(event?.let { WatchedPackages.displayName(it.source) } ?: "Raw event") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
+            TallyTopBar(event?.let { WatchedPackages.displayName(it.source) } ?: "Raw event", onBack)
         },
     ) { padding ->
         event?.let { current -> EventBody(current, Modifier.padding(padding)) }

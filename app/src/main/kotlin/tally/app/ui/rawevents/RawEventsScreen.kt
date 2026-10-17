@@ -1,5 +1,8 @@
 package tally.app.ui.rawevents
 
+import tally.app.ui.theme.TallyIcons
+import tally.app.ui.components.CircleIconButton
+import tally.app.ui.components.TallyTopBar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -8,17 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -26,7 +23,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +55,7 @@ fun RawEventsScreen(
     onOpenSetup: () -> Unit,
     /** Re-runs unprocessed bank and wallet events through the parsers; returns a summary. */
     onReparse: suspend () -> String,
+    onBack: () -> Unit,
 ) {
     val events by remember(repository) { repository.observeAll() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -95,9 +92,7 @@ fun RawEventsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Raw events (${events.size})") },
-                actions = {
+            TallyTopBar("Raw events (${events.size})", onBack) {
                     fun export(everything: Boolean) {
                         exportMenu = false
                         scope.launch {
@@ -114,9 +109,7 @@ fun RawEventsScreen(
                         }
                     }
                     Box {
-                        IconButton(enabled = events.isNotEmpty() && !exporting, onClick = { exportMenu = true }) {
-                            Icon(Icons.Default.Share, contentDescription = "Export or clear")
-                        }
+                        CircleIconButton(TallyIcons.Download, "Export or clear", { exportMenu = true }, enabled = events.isNotEmpty() && !exporting)
                         DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
                             DropdownMenuItem(
                                 text = { Text("Export bank & wallet ($watchedCount)") },
@@ -137,7 +130,9 @@ fun RawEventsScreen(
                             }
                         }
                     }
-                    IconButton(
+                    CircleIconButton(
+                        TallyIcons.Sync,
+                        "Re-parse",
                         enabled = !reparsing,
                         onClick = {
                             scope.launch {
@@ -149,14 +144,9 @@ fun RawEventsScreen(
                                 }
                             }
                         },
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Re-parse")
-                    }
-                    IconButton(onClick = onOpenSetup) {
-                        Icon(Icons.Default.Settings, contentDescription = "Setup")
-                    }
-                },
-            )
+                    )
+                    CircleIconButton(TallyIcons.Sliders, "Setup", onOpenSetup)
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->

@@ -1,6 +1,28 @@
 package tally.app.ui.transaction
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
+import tally.app.ui.components.AmountText
+import tally.app.ui.components.CircleIconButton
+import tally.app.ui.components.LetterAvatar
+import tally.app.ui.components.MonoLabel
+import tally.app.ui.components.PillButton
+import tally.app.ui.components.PillChip
+import tally.app.ui.components.PillStyle
+import tally.app.ui.components.PillTone
+import tally.app.ui.components.ScreenPadding
+import tally.app.ui.components.StatusPill
+import tally.app.ui.components.TallyCard
+import tally.app.ui.components.TallyTopBar
+import tally.app.ui.components.avatarKey
+import tally.app.ui.theme.Tally
+import tally.app.ui.theme.TallyIcons
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -10,29 +32,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.InputChip
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,9 +61,9 @@ import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.inbox.CategoryPickerSheet
 import tally.app.ui.ledger.dayLabel
-import tally.app.ui.ledger.displayAmount
 import tally.app.ui.ledger.occurredAtLocal
 import tally.core.capture.WatchedPackages
+import tally.core.model.CategorySource
 import tally.core.model.Money
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
@@ -67,7 +74,6 @@ import java.time.format.FormatStyle
 private val TIME_FORMAT = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 
 /** One transaction: details, tags, splits, and the notifications it came from. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionScreen(
     id: String,
@@ -97,117 +103,155 @@ fun TransactionScreen(
     var picking by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("Transaction") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        scope.launch {
-                            ledger.deleteTransaction(id)
-                            CaptureNotifier.cancel(context, id)
-                            onBack()
-                        }
-                    }) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
-                },
-            )
+            TallyTopBar("", onBack = onBack) {
+                CircleIconButton(TallyIcons.Trash, "Delete", onClick = {
+                    scope.launch {
+                        ledger.deleteTransaction(id)
+                        CaptureNotifier.cancel(context, id)
+                        onBack()
+                    }
+                })
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         val t = transaction ?: return@Scaffold
         val merchantName = t.merchantId?.let { mid -> merchants.find { it.id == mid }?.name } ?: t.merchantRaw
         val local = t.occurredAtLocal()
+        val categoryName = categoryNames[t.categoryId] ?: "Uncategorized"
+        val title = merchantName ?: categoryName
 
         Column(
-            modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            modifier = Modifier
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = ScreenPadding)
+                .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(displayAmount(t.amountCents), style = MaterialTheme.typography.displaySmall)
-            Text(merchantName ?: categoryNames[t.categoryId] ?: "Uncategorized", style = MaterialTheme.typography.titleLarge)
-            Text(
-                listOfNotNull(
-                    categoryNames[t.categoryId] ?: "Uncategorized",
-                    accounts.find { it.id == t.accountId }?.name,
-                    "${dayLabel(local.toLocalDate(), LocalDate.now())} ${TIME_FORMAT.format(local)}",
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            t.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            Text(
-                listOfNotNull(
-                    sourceLabel(t.source),
-                    "Needs review".takeIf { t.status == TransactionStatus.CAPTURED.name },
-                    t.categorySource?.let { "category by ${it.lowercase()}" },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { context.startActivity(QuickEntryActivity.intent(context, transactionId = id)) }) {
-                    Text("Edit")
-                }
-                if (t.merchantId != null) {
-                    OutlinedButton(onClick = { picking = true }) { Text("Always do this…") }
+            Column(
+                Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LetterAvatar(title, avatarKey(t.categoryId, categories.associateBy { it.id }), size = 60.dp)
+                Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                AmountText(
+                    t.amountCents,
+                    MaterialTheme.typography.displayMedium,
+                    color = if (t.amountCents < 0) Tally.colors.positive else MaterialTheme.colorScheme.onSurface,
+                    centsScale = 0.55f,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (t.status == TransactionStatus.CAPTURED.name) StatusPill("Needs review", tone = PillTone.Warn)
+                    t.categorySource?.let { StatusPill(filedBy(it)) }
                 }
             }
 
-            HorizontalDivider()
-            SectionTitle("Tags")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                tags.forEach { tag ->
-                    InputChip(
-                        selected = false,
-                        onClick = { scope.launch { ledger.removeTag(id, tag.id) } },
-                        label = { Text("#${tag.name}") },
-                        trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove ${tag.name}") },
-                    )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton(
+                    "Edit",
+                    onClick = { context.startActivity(QuickEntryActivity.intent(context, transactionId = id)) },
+                    icon = TallyIcons.Pencil,
+                    modifier = Modifier.weight(1f),
+                )
+                if (t.merchantId != null) {
+                    PillButton("Always do this…", onClick = { picking = true }, style = PillStyle.Soft, icon = TallyIcons.Wand, modifier = Modifier.weight(1f))
                 }
-                AssistChip(onClick = { addingTag = true }, label = { Text("Add tag") })
+            }
+
+            TallyCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 18.dp, vertical = 6.dp)) {
+                DetailRow("Category", categoryName)
+                accounts.find { it.id == t.accountId }?.let { DetailRow("Account", it.name) }
+                DetailRow("When", "${dayLabel(local.toLocalDate(), LocalDate.now())}, ${TIME_FORMAT.format(local)}")
+                DetailRow("Source", sourceLabel(t.source))
+                t.note?.let { DetailRow("Note", it) }
+            }
+
+            TallyCard(Modifier.fillMaxWidth()) {
+                MonoLabel("Tags")
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 12.dp),
+                ) {
+                    tags.forEach { tag ->
+                        PillChip(
+                            "#${tag.name}",
+                            selected = true,
+                            onClick = { scope.launch { ledger.removeTag(id, tag.id) } },
+                            trailing = TallyIcons.Close,
+                        )
+                    }
+                    PillChip("Add tag", selected = false, onClick = { addingTag = true }, leading = TallyIcons.Plus)
+                }
             }
 
             if (t.amountCents > 0) {
-                HorizontalDivider()
-                SectionTitle("Split")
-                splits.forEach { split ->
-                    ListItem(
-                        headlineContent = {
-                            Text(split.owedBy?.let { "Owed by $it" } ?: categoryNames[split.categoryId] ?: "Uncategorized")
-                        },
-                        trailingContent = {
-                            Row {
-                                Text(Money.format(split.amountCents), modifier = Modifier.padding(top = 12.dp))
-                                IconButton(onClick = { scope.launch { ledger.deleteSplit(split.id) } }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Remove split")
-                                }
-                            }
-                        },
-                    )
-                }
-                val remainder = t.amountCents - splits.sumOf { it.amountCents }
-                if (splits.isNotEmpty()) {
+                TallyCard(Modifier.fillMaxWidth()) {
+                    MonoLabel("Split")
+                    splits.forEach { split ->
+                        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                split.owedBy?.let { "Owed by $it" } ?: categoryNames[split.categoryId] ?: "Uncategorized",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            AmountText(split.amountCents, MaterialTheme.typography.titleMedium, centsScale = 0.85f)
+                            CircleIconButton(
+                                TallyIcons.Close,
+                                "Remove split",
+                                onClick = { scope.launch { ledger.deleteSplit(split.id) } },
+                                size = 32.dp,
+                                modifier = Modifier.padding(start = 10.dp),
+                            )
+                        }
+                    }
+                    val remainder = t.amountCents - splits.sumOf { it.amountCents }
                     Text(
-                        "${Money.format(remainder)} stays in ${categoryNames[t.categoryId] ?: "Uncategorized"}",
-                        style = MaterialTheme.typography.bodyMedium,
+                        if (splits.isEmpty()) {
+                            "Put part of this in another category, or note who owes you for it."
+                        } else {
+                            "${Money.format(remainder)} stays in $categoryName"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Tally.colors.muted,
+                        modifier = Modifier.padding(top = 10.dp),
                     )
-                }
-                if (remainder > 0) {
-                    OutlinedButton(onClick = { addingSplit = true }) { Text("Split off part") }
+                    if (remainder > 0) {
+                        PillButton(
+                            "Split off part",
+                            onClick = { addingSplit = true },
+                            style = PillStyle.Soft,
+                            icon = TallyIcons.Split,
+                            height = 42.dp,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
                 }
             }
 
             if (notifications.isNotEmpty()) {
-                HorizontalDivider()
-                SectionTitle("From notifications")
-                notifications.forEach { event ->
-                    ListItem(
-                        modifier = Modifier.clickable { onOpenRawEvent(event.id) },
-                        overlineContent = { Text(WatchedPackages.displayName(event.source)) },
-                        headlineContent = { Text(event.title.orEmpty()) },
-                        supportingContent = { Text(event.bigText ?: event.text.orEmpty(), maxLines = 3) },
-                    )
+                TallyCard(Modifier.fillMaxWidth()) {
+                    MonoLabel("From notifications")
+                    notifications.forEach { event ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.background)
+                                .clickable { onOpenRawEvent(event.id) }
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            MonoLabel(WatchedPackages.displayName(event.source), color = Tally.colors.faint)
+                            Text(event.title.orEmpty(), style = MaterialTheme.typography.titleSmall)
+                            Text(event.bigText ?: event.text.orEmpty(), style = MaterialTheme.typography.bodySmall, color = Tally.colors.muted, maxLines = 3)
+                        }
+                    }
                 }
             }
         }
@@ -249,6 +293,13 @@ fun TransactionScreen(
     }
 }
 
+private fun filedBy(categorySource: String): String = when (categorySource) {
+    CategorySource.RULE.name -> "Filed by a rule"
+    CategorySource.MEMORY.name -> "Filed like last time"
+    CategorySource.LLM.name -> "Suggested by Claude"
+    else -> "Filed by you"
+}
+
 private fun sourceLabel(source: String): String = when (source) {
     Source.MANUAL.name -> "Entered by hand"
     Source.RBC_ALERT.name -> "Captured from RBC"
@@ -258,8 +309,11 @@ private fun sourceLabel(source: String): String = when (source) {
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+private fun DetailRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        MonoLabel(label, Modifier.width(96.dp))
+        Text(value, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+    }
 }
 
 @Composable
@@ -285,8 +339,12 @@ private fun TagDialog(existing: List<TagEntity>, onAdd: suspend (String) -> Stri
                     supportingText = error?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    existing.forEach { tag -> AssistChip(onClick = { add(tag.name) }, label = { Text("#${tag.name}") }) }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    existing.forEach { tag -> PillChip("#${tag.name}", selected = false, onClick = { add(tag.name) }) }
                 }
             }
         },
@@ -325,8 +383,8 @@ private fun SplitDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !owed, onClick = { owed = false }, label = { Text("Another category") })
-                    FilterChip(selected = owed, onClick = { owed = true }, label = { Text("Someone owes me") })
+                    PillChip("Another category", selected = !owed, onClick = { owed = false })
+                    PillChip("Someone owes me", selected = owed, onClick = { owed = true })
                 }
                 if (owed) {
                     OutlinedTextField(
@@ -337,9 +395,9 @@ private fun SplitDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         categories.forEach { c ->
-                            FilterChip(selected = c.id == categoryId, onClick = { categoryId = c.id }, label = { Text(c.name) })
+                            PillChip(c.name, selected = c.id == categoryId, onClick = { categoryId = c.id })
                         }
                     }
                 }

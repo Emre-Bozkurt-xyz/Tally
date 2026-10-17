@@ -1,5 +1,7 @@
 package tally.app.ui.categories
 
+import tally.app.ui.components.AddButton
+import tally.app.ui.components.TallyTopBar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -21,7 +22,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -32,7 +32,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,19 +71,10 @@ fun CategoriesScreen(ledger: LedgerRepository, repository: CategoryRepository, o
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Categories") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
+            TallyTopBar("Categories", onBack)
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { editing = Editing(null) }) {
-                Icon(Icons.Default.Add, contentDescription = "Add category")
-            }
+            AddButton("Add category", onClick = { editing = Editing(null) })
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
