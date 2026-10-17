@@ -25,14 +25,28 @@ data class MerchantMemory(val lastCategoryId: String?, val confirmCount: Int) {
     }
 }
 
-data class Suggestion(val categoryId: String?, val source: CategorySource?, val confidence: Confidence)
+data class Suggestion(
+    val categoryId: String?,
+    val source: CategorySource?,
+    val confidence: Confidence,
+    /** Tags from the matching rule. */
+    val tags: List<String> = emptyList(),
+)
 
 /**
- * Picks a category for a capture. v1: merchant memory only. Phase 3 puts rules in front of it
- * and Phase 4 the LLM behind it.
+ * Picks a category for a capture: your rules first (you said so explicitly: trusted), then
+ * merchant memory, then nothing. Phase 4 adds the LLM behind memory.
  */
-object Categorizer {
-    fun categorize(memory: MerchantMemory?): Suggestion {
+class Categorizer(private val rules: RulesEngine = RulesEngine.EMPTY) {
+    fun categorize(
+        merchant: String?,
+        amountCents: Long,
+        accountId: String?,
+        memory: MerchantMemory?,
+    ): Suggestion {
+        rules.match(merchant, amountCents, accountId)?.let { rule ->
+            return Suggestion(rule.categoryId, CategorySource.RULE, Confidence.HIGH, rule.tags)
+        }
         val categoryId = memory?.lastCategoryId
             ?: return Suggestion(categoryId = null, source = null, confidence = Confidence.LOW)
         val confidence = if (memory.confirmCount >= MerchantMemory.TRUSTED_AFTER) Confidence.HIGH else Confidence.MEDIUM

@@ -38,6 +38,16 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE NOT deleted AND occurredAt >= :since")
     suspend fun getActiveSince(since: Long): List<TransactionEntity>
 
+    /** Gives a merchant's past transactions (up to an amount) a category from a new rule. */
+    @Query(
+        """
+        UPDATE transactions
+        SET categoryId = :categoryId, categorySource = 'RULE', status = 'CONFIRMED', updatedAt = :now
+        WHERE merchantId = :merchantId AND NOT deleted AND amountCents <= :maxAmountCents
+        """,
+    )
+    suspend fun categorizeMerchant(merchantId: String, categoryId: String, maxAmountCents: Long, now: Long): Int
+
     /** Soft delete (and undo), so the change syncs. */
     @Query("UPDATE transactions SET deleted = :deleted, updatedAt = :updatedAt WHERE id = :id")
     suspend fun setDeleted(id: String, deleted: Boolean, updatedAt: Long)

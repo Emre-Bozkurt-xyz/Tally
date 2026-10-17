@@ -1,5 +1,6 @@
 package tally.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -22,6 +23,8 @@ data class AliasEntity(
     @PrimaryKey val id: String,
     val pattern: String,
     val merchantName: String,
+    /** Lower is checked first; the first matching alias wins. (v4) */
+    @ColumnInfo(defaultValue = "0") val priority: Int = 0,
     val updatedAt: Long,
     val deleted: Boolean = false,
 )

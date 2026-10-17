@@ -17,6 +17,7 @@ import tally.core.normalize.MerchantNormalizer
 import tally.core.rules.Categorizer
 import tally.core.rules.Confidence
 import tally.core.rules.MerchantMemory
+import tally.core.rules.RulesEngine
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -36,7 +37,6 @@ class CapturePipeline(
     private val rawEvents = db.rawEventDao()
     private val merchants = db.merchantDao()
     private val identifiers = db.accountIdentifierDao()
-    private val normalizer = MerchantNormalizer()
     private val deduper = CaptureDeduper(DEDUPE_WINDOW)
 
     // Notifications of one purchase arrive seconds apart; process them one at a time.
@@ -85,14 +85,17 @@ class CapturePipeline(
 
     private suspend fun capture(event: RawEventEntity, capture: Capture): Outcome.Captured {
         val now = clock.millis()
+        // Read fresh each time: rules and aliases change rarely, and captures are rare too.
+        val normalizer = MerchantNormalizer(db.aliasDao().getActive().mapNotNull { it.toAlias() })
+        val categorizer = Categorizer(RulesEngine(db.ruleDao().getActive().map { it.toRule() }))
         val accountId = capture.accountHint?.last4?.let { identifiers.accountFor(it) }
         val merchant = capture.merchantRaw?.let { merchantNamed(normalizer.normalize(it), now) }
         val match = deduper.findMatch(capture, accountId, candidatesNear(capture.occurredAt))
 
         val transaction = if (match == null) {
-            create(event, capture, accountId, merchant, now)
+            create(event, capture, accountId, merchant, categorizer, now)
         } else {
-            merge(transactions.getByIdIncludingDeleted(match.transactionId)!!, capture, accountId, merchant, now)
+            merge(transactions.getByIdIncludingDeleted(match.transactionId)!!, capture, accountId, merchant, categorizer, now)
         }
         rawEvents.markParsed(event.id, ParseStatus.PARSED.name, transaction.id)
         memory.learnAccount(transaction.id, transaction.accountId)
@@ -109,9 +112,10 @@ class CapturePipeline(
         capture: Capture,
         accountId: String?,
         merchant: MerchantEntity?,
+        categorizer: Categorizer,
         now: Long,
     ): TransactionEntity {
-        val transaction = TransactionEntity(
+        val (transaction, tags) = TransactionEntity(
             id = UUID.randomUUID().toString(),
             amountCents = capture.amountCents,
             currency = LedgerRepository.CURRENCY,
@@ -127,8 +131,9 @@ class CapturePipeline(
             categorySource = null,
             kind = capture.kind.name,
             updatedAt = now,
-        ).categorized(merchant)
+        ).categorized(merchant, categorizer)
         transactions.upsert(transaction)
+        tag(transaction.id, tags, now)
         return transaction
     }
 
@@ -138,6 +143,7 @@ class CapturePipeline(
         capture: Capture,
         accountId: String?,
         merchant: MerchantEntity?,
+        categorizer: Categorizer,
         now: Long,
     ): TransactionEntity {
         var merged = existing.copy(occurredAt = minOf(existing.occurredAt, capture.occurredAt.toEpochMilli()))
@@ -149,21 +155,44 @@ class CapturePipeline(
             merged = merged.copy(accountId = accountId)
         }
         if (merged.status == TransactionStatus.CAPTURED.name && merged.categoryId == null) {
-            merged = merged.categorized(merchant ?: merged.merchantId?.let { merchants.getById(it) })
+            val (categorized, tags) =
+                merged.categorized(merchant ?: merged.merchantId?.let { merchants.getById(it) }, categorizer)
+            merged = categorized
+            tag(merged.id, tags, now)
         }
         if (merged == existing) return existing
         return merged.copy(updatedAt = now).also { transactions.upsert(it) }
     }
 
-    /** Applies merchant memory. Trusted memory confirms the transaction outright. */
-    private fun TransactionEntity.categorized(merchant: MerchantEntity?): TransactionEntity {
-        val suggestion = Categorizer.categorize(merchant?.let { MerchantMemory(it.lastCategoryId, it.confirmCount) })
-        if (suggestion.categoryId == null) return this
+    /**
+     * Applies rules, then merchant memory. A rule or trusted memory confirms the transaction
+     * outright. Returns the transaction and the matching rule's tags.
+     */
+    private fun TransactionEntity.categorized(
+        merchant: MerchantEntity?,
+        categorizer: Categorizer,
+    ): Pair<TransactionEntity, List<String>> {
+        val suggestion = categorizer.categorize(
+            merchant = merchant?.name,
+            amountCents = amountCents,
+            accountId = accountId,
+            memory = merchant?.let { MerchantMemory(it.lastCategoryId, it.confirmCount) },
+        )
+        if (suggestion.categoryId == null) return this to emptyList()
         return copy(
             categoryId = suggestion.categoryId,
             categorySource = suggestion.source?.name,
             status = if (suggestion.confidence == Confidence.HIGH) TransactionStatus.CONFIRMED.name else status,
-        )
+        ) to suggestion.tags
+    }
+
+    private suspend fun tag(transactionId: String, names: List<String>, now: Long) {
+        val tags = db.tagDao()
+        for (name in names) {
+            val tag = tags.findByName(name)
+                ?: TagEntity(UUID.randomUUID().toString(), name, now).also { tags.upsert(it) }
+            tags.link(TransactionTagCrossRef(transactionId, tag.id, now))
+        }
     }
 
     private suspend fun merchantNamed(name: String, now: Long): MerchantEntity =

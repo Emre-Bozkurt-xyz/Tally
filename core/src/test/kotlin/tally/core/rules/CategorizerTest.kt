@@ -5,19 +5,37 @@ import org.junit.jupiter.api.Test
 import tally.core.model.CategorySource
 
 class CategorizerTest {
+    private val memoryOnly = Categorizer()
+
+    private fun categorize(categorizer: Categorizer, memory: MerchantMemory?, merchant: String = "Tim Hortons", cents: Long = 425) =
+        categorizer.categorize(merchant, cents, accountId = null, memory = memory)
+
     @Test
     fun `no memory is low confidence without a category`() {
-        assertEquals(Suggestion(null, null, Confidence.LOW), Categorizer.categorize(null))
-        assertEquals(Suggestion(null, null, Confidence.LOW), Categorizer.categorize(MerchantMemory(null, 0)))
+        assertEquals(Suggestion(null, null, Confidence.LOW), categorize(memoryOnly, null))
+        assertEquals(Suggestion(null, null, Confidence.LOW), categorize(memoryOnly, MerchantMemory(null, 0)))
     }
 
     @Test
     fun `one confirmation suggests, two are trusted`() {
         assertEquals(
             Suggestion("coffee", CategorySource.MEMORY, Confidence.MEDIUM),
-            Categorizer.categorize(MerchantMemory("coffee", 1)),
+            categorize(memoryOnly, MerchantMemory("coffee", 1)),
         )
-        assertEquals(Confidence.HIGH, Categorizer.categorize(MerchantMemory("coffee", 2)).confidence)
+        assertEquals(Confidence.HIGH, categorize(memoryOnly, MerchantMemory("coffee", 2)).confidence)
+    }
+
+    @Test
+    fun `rules beat memory and are trusted`() {
+        val categorizer = Categorizer(
+            RulesEngine(listOf(Rule("r", 0, "Tim Hortons", categoryId = "coffee", tags = listOf("caffeine")))),
+        )
+        assertEquals(
+            Suggestion("coffee", CategorySource.RULE, Confidence.HIGH, listOf("caffeine")),
+            categorize(categorizer, MerchantMemory("groceries", 5)),
+        )
+        // No rule match: memory as before.
+        assertEquals("groceries", categorize(categorizer, MerchantMemory("groceries", 5), merchant = "Metro").categoryId)
     }
 
     @Test

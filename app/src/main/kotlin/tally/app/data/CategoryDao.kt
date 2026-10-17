@@ -37,6 +37,12 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE NOT deleted ORDER BY name")
     fun observeActive(): Flow<List<AccountEntity>>
 
+    @Query("SELECT * FROM accounts WHERE NOT deleted ORDER BY name")
+    suspend fun getActive(): List<AccountEntity>
+
+    @Query("SELECT * FROM accounts")
+    suspend fun getAll(): List<AccountEntity>
+
     /** Includes deleted accounts, so old transactions still show their account name. */
     @Query("SELECT * FROM accounts")
     fun observeAll(): Flow<List<AccountEntity>>

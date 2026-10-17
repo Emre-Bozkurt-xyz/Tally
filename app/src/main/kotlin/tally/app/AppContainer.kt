@@ -11,6 +11,7 @@ import tally.app.data.CategoryRepository
 import tally.app.data.DefaultData
 import tally.app.data.LedgerRepository
 import tally.app.data.RawEventRepository
+import tally.app.data.RulesRepository
 import tally.app.data.SettingsRepository
 import tally.app.data.TallyDatabase
 import tally.app.widget.QuickAddWidget
@@ -28,6 +29,7 @@ class AppContainer(context: Context) {
     val ledger = LedgerRepository(database, memory = captureMemory)
     val capture = CapturePipeline(database, captureMemory)
     val categories = CategoryRepository(database)
+    val rules = RulesRepository(database)
 
     init {
         appScope.launch { DefaultData.seedIfEmpty(database) }
