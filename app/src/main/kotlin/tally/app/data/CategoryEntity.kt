@@ -32,3 +32,17 @@ data class AccountEntity(
     val updatedAt: Long,
     val deleted: Boolean = false,
 )
+
+/**
+ * A last-4 that identifies an account. One account has several: a debit purchase shows the
+ * card's last 4 in the wallet and the bank account's last 4 in the RBC alert. Learned when
+ * you set the account on a captured transaction.
+ */
+@Entity(tableName = "account_identifiers", indices = [Index("last4"), Index("accountId")])
+data class AccountIdentifierEntity(
+    @PrimaryKey val id: String,
+    val accountId: String,
+    val last4: String,
+    val updatedAt: Long,
+    val deleted: Boolean = false,
+)

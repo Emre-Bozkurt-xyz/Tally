@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import tally.app.appContainer
+import tally.app.data.CapturePipeline
 import tally.app.data.RawEventEntity
 import tally.core.capture.WatchedPackages
 import tally.core.model.ParseStatus
@@ -18,8 +19,8 @@ import java.time.ZoneId
 import java.util.UUID
 
 /**
- * Records notifications from watched packages as raw events. Does nothing clever: all
- * parsing happens later, in `core`, over the stored events.
+ * Records notifications from watched packages as raw events, then hands each to the
+ * [CapturePipeline]. Does nothing clever itself: parsing and matching live in `core`.
  */
 class TallyNotificationListener : NotificationListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -39,9 +40,13 @@ class TallyNotificationListener : NotificationListenerService() {
         }
         scope.launch {
             try {
-                container.rawEvents.record(event)
+                if (!container.rawEvents.record(event)) return@launch
+                val outcome = container.capture.process(event)
+                if (outcome is CapturePipeline.Outcome.Captured) {
+                    CaptureNotifier.onCaptured(this@TallyNotificationListener, outcome)
+                }
             } catch (t: Throwable) {
-                Log.e(TAG, "Couldn't store notification from $pkg", t)
+                Log.e(TAG, "Couldn't store or process notification from $pkg", t)
             }
         }
     }

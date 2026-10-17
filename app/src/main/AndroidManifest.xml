@@ -43,6 +43,10 @@
         </service>
 
         <receiver
+            android:name=".capture.CaptureActionReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".widget.QuickAddWidgetReceiver"
             android:exported="true"
             android:label="@string/quick_add">

@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import tally.app.data.CaptureMemory
+import tally.app.data.CapturePipeline
 import tally.app.data.CategoryRepository
 import tally.app.data.DefaultData
 import tally.app.data.LedgerRepository
@@ -22,7 +24,9 @@ class AppContainer(context: Context) {
     val database = TallyDatabase.build(context)
     val rawEvents = RawEventRepository(database.rawEventDao())
     val settings = SettingsRepository(context, appScope)
-    val ledger = LedgerRepository(database)
+    val captureMemory = CaptureMemory(database)
+    val ledger = LedgerRepository(database, memory = captureMemory)
+    val capture = CapturePipeline(database, captureMemory)
     val categories = CategoryRepository(database)
 
     init {

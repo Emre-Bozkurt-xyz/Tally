@@ -3,6 +3,8 @@ package tally.app.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import tally.core.capture.RawNotification
+import java.time.Instant
 
 /**
  * A notification stored verbatim before any parsing. Parsers can be rewritten and re-run
@@ -34,6 +36,14 @@ data class RawEventEntity(
     /** A [tally.core.model.ParseStatus] name. */
     val parseStatus: String,
     val transactionId: String?,
+)
+
+fun RawEventEntity.toRawNotification() = RawNotification(
+    packageName = source,
+    title = title,
+    text = text,
+    bigText = bigText,
+    postedAt = Instant.ofEpochMilli(postedAt),
 )
 
 /** Per-package capture stats, for the listener health check on the setup screen. */

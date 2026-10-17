@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +53,8 @@ fun RawEventsScreen(
     repository: RawEventRepository,
     onOpenEvent: (String) -> Unit,
     onOpenSetup: () -> Unit,
+    /** Re-runs unprocessed bank and wallet events through the parsers; returns a summary. */
+    onReparse: suspend () -> String,
 ) {
     val events by remember(repository) { repository.observeAll() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -59,6 +62,7 @@ fun RawEventsScreen(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var exporting by remember { mutableStateOf(false) }
+    var reparsing by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -83,6 +87,21 @@ fun RawEventsScreen(
                         },
                     ) {
                         Icon(Icons.Default.Share, contentDescription = "Export as JSON")
+                    }
+                    IconButton(
+                        enabled = !reparsing,
+                        onClick = {
+                            scope.launch {
+                                reparsing = true
+                                try {
+                                    snackbar.showSnackbar(onReparse())
+                                } finally {
+                                    reparsing = false
+                                }
+                            }
+                        },
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Re-parse")
                     }
                     IconButton(onClick = onOpenSetup) {
                         Icon(Icons.Default.Settings, contentDescription = "Setup")
@@ -113,6 +132,7 @@ private fun RawEventRow(event: RawEventEntity, onClick: () -> Unit) {
         append(" · ")
         append(TIME_FORMAT.format(time))
         if (event.isGroupSummary) append(" · summary")
+        if (event.source in WatchedPackages.ALL) append(" · ${event.parseStatus.lowercase()}")
     }
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),

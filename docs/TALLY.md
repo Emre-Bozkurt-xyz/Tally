@@ -15,12 +15,12 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Scaffold (4.2) | Done |
 | Phase 0: raw logger | Done for Google Pay + debit: on 2026-10-16 both the Google Wallet and RBC notifications were captured (first fixture). Still unseen: Samsung Pay, physical card, credit card. |
 | Phase 1: manual core | Built. Remaining: place the widget and run the "done when" check on the phone. Ledger, month and category screens checked on the phone; widget installed but not yet placed. |
-| Phase 2: auto capture | Started. Parsers for the two shapes seen so far (RBC chequing withdrawal, Google Wallet purchase) + golden fixture test. Not wired into the listener yet. |
+| Phase 2: auto capture | Wired end to end: notification → parse → match the wallet/RBC pair → merchant cleanup → memory categorization → capture notification (Change / Ignore / tap to confirm). Parsers know 2 shapes so far (RBC chequing withdrawal, Google Wallet purchase); more as fixtures arrive. Not yet run on a real purchase after wiring. |
 | Phase 3 to 6 | Not started. |
 
 What's verified so far:
-- `./gradlew :core:test`: 76 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures).
-- `./gradlew :app:testDebugUnitTest`: 30 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data, quick-entry save and edit, delete and undo, category tree, category edits, deleting other apps' raw events).
+- `./gradlew :core:test`: 97 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures, merchant cleanup, dedupe, categorizer).
+- `./gradlew :app:testDebugUnitTest`: 37 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v3 migration, capture pipeline end to end, seed data, quick-entry save and edit, delete and undo, category tree, category edits, deleting other apps' raw events).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
 - Debug build installed on the phone (`dev.emre.tally.debug`).
 
@@ -114,9 +114,9 @@ tally/
         WatchedPackages.kt      # package names -> Source, display names
         Amounts.kt              # parseCents(), findFirst()
         RawEventExport.kt       # export file format + codec
-      normalize/                # later: MerchantNormalizer, alias matching
-      rules/                    # later: RulesEngine, TOML codec
-      dedupe/                   # later: CaptureDeduper
+      normalize/                # MerchantNormalizer, Alias
+      rules/                    # Categorizer, MerchantMemory (RulesEngine, TOML codec later)
+      dedupe/                   # CaptureDeduper
       reconcile/                # later: StatementMatcher, RbcCsvReader
     src/test/kotlin/...         # AmountsTest, MoneyTest, RawEventExportTest
     src/test/resources/fixtures/   # exported raw notifications, CSV samples (README only so far)
@@ -213,7 +213,7 @@ It also holds the "Log all packages" toggle and listener health (section 9).
 
 All IDs are UUID strings (generated on device, so sync never needs ID remapping). Every syncable table has `updatedAt: Long` (epoch ms) and `deleted: Boolean` (soft delete for sync).
 
-**Database v2 (built).** v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`, tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
+**Database v3 (built).** v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`; v3 adds `account_identifiers` (`AccountIdentifierEntity`: id, accountId, last4, updatedAt, deleted), several last-4s per account, learned when you set the account on a captured transaction. Tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
 
 ```kotlin
 // Built (v1). Table "raw_events", indexed on receivedAt, sbnKey, source.
@@ -482,31 +482,31 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 - [x] **Golden tests:** (`GoldenFixturesTest`, `@TestFactory`; first fixture `2026-10-16-gwallet-debit-purchase`) each fixture file (`RawEventExport` format, read with `RawEventExportCodec` and `toRawNotification()`) has a sibling `.expected.json`. A test iterates all fixtures and asserts parser output. Adding a new case = drop two files in a folder.
 
 **Normalization (in `core`)**
-- [ ] `MerchantNormalizer.normalize(raw)`:
+- [x] `MerchantNormalizer.normalize(raw)` (aliases are a constructor list; Phase 3 feeds them from the DB):
   1. Apply user aliases (regex, first match wins).
   2. Generic cleanup: strip trailing store numbers (`#1234`, ` 01234`), trailing city + province codes (`HAMILTON ON`), payment processor prefixes (`SQ *`, `TST* `, `PAYPAL *`), collapse whitespace, title-case.
-- [ ] Unit tests with real merchant strings from fixtures.
+- [x] Unit tests with real merchant strings from fixtures (plus common Canadian shapes; title-case also after hyphens: "7-Eleven").
 
 **Dedupe (in `core`)**
-- [ ] `CaptureDeduper.findMatch`: candidate = existing transaction with the same `amountCents`, `occurredAt` within 10 min, compatible account (wallet source maps to account via `AccountEntity.walletSource`), not already merged with an event from the same source.
-- [ ] Merge policy: first event creates the transaction. Later events attach their raw event and fill in missing fields. Wallet merchant name replaces RBC's if RBC's looks truncated or uppercase-mangled. RBC event sets the account authoritatively.
-- [ ] Tests: wallet then RBC, RBC then wallet, two genuine identical purchases 2 minutes apart (should NOT merge if both come from the same source).
+- [x] `CaptureDeduper.findMatch`: candidate = existing non-manual transaction (deleted ones too, so an ignored purchase absorbs its second notification) with the same `amountCents`, `occurredAt` within 10 min, no conflicting account (accounts come from `account_identifiers`, not `walletSource`), not already merged with an event from the same source. Closest in time wins.
+- [x] Merge policy (`CapturePipeline.merge`; earliest time wins): first event creates the transaction. Later events attach their raw event and fill in missing fields. Wallet merchant name replaces RBC's if RBC's looks truncated or uppercase-mangled. RBC event sets the account authoritatively.
+- [x] Tests (`CaptureDeduperTest`, `CapturePipelineTest` on the real fixture strings): wallet then RBC, RBC then wallet, two genuine identical purchases 2 minutes apart (should NOT merge if both come from the same source).
 
 **Categorization v1 (in `core`)**
-- [ ] `Categorizer`: rules (Phase 3 fills these in; empty list for now) then merchant memory (`MerchantEntity.lastCategoryId`) then none.
-- [ ] Confidence: memory with `confirmCount >= 2` = high (log silently). Memory with 1 = medium (notify). No match = low (notify + inbox).
+- [x] `Categorizer`: v1 is merchant memory only; rules (Phase 3) go in front of it. Merchant memory (`MerchantEntity.lastCategoryId`) then none.
+- [x] Confidence: memory with `confirmCount >= 2` = high (log silently). Memory with 1 = medium (notify). No match = low (notify + inbox).
 
 **Android wiring**
-- [ ] Listener pipeline: store raw, pick parser by package, parse, normalize, dedupe, categorize, write transaction with `status = CAPTURED`, mark raw event `PARSED` / `IGNORED` / `FAILED`.
-- [ ] `FAILED` from a watched package = an inbox flag ("couldn't parse a notification from RBC") with a link to the raw event. This is how you find out RBC changed their wording.
-- [ ] Re-parse action on the raw events screen: re-runs all `FAILED` (or all) events through the current parsers. Idempotent thanks to `RawEventEntity.transactionId`.
-- [ ] **Capture notification** (own low-importance channel): "$4.25 Tim Hortons, Food/Coffee". Actions:
+- [x] Listener pipeline (`CapturePipeline`, serialized by a mutex, one DB transaction per capture): store raw, pick parser by package, parse, normalize, dedupe, categorize, write transaction with `status = CAPTURED`, mark raw event `PARSED` / `IGNORED` / `FAILED`.
+- [ ] (Raw event is marked FAILED; the inbox itself is Phase 3.) `FAILED` from a watched package = an inbox flag ("couldn't parse a notification from RBC") with a link to the raw event. This is how you find out RBC changed their wording.
+- [x] Re-parse action on the raw events screen (refresh icon): re-runs every watched event without a transaction (PENDING and FAILED), oldest first, without posting notifications. Idempotent thanks to `RawEventEntity.transactionId`.
+- [x] **Capture notification** (`CaptureNotifier`, channel "Captured purchases", low importance; tagged by transaction id and updated when the second notification merges in). Split waits for splits (Phase 3). With no suggested category, tapping opens Change instead of confirming. "$4.25 Tim Hortons, Food/Coffee". Actions:
   - Change: opens `QuickEntryActivity` in edit mode.
   - Split: opens the transaction detail at the split section.
   - Ignore: broadcast receiver, soft-deletes the transaction.
   - Tapping the body confirms (status `CONFIRMED`, bumps merchant memory).
-- [ ] High-confidence captures post no notification at all; they land as `CONFIRMED` directly.
-- [ ] Merchant memory updates on every confirm or category change.
+- [x] High-confidence captures post no notification at all; they land as `CONFIRMED` directly.
+- [x] Merchant memory updates on every confirm or category change (`CaptureMemory`; once per decision, not per save). Account last-4s are learned the same way. Editing a capture never defaults its account to Cash.
 
 **Done when:** a week of normal spending produces one transaction per real purchase (no duplicates from wallet + RBC), and you touched fewer than a third of them.
 
@@ -633,8 +633,8 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 ## 8. Testing strategy
 
-- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest`, `ParsersTest`, `GoldenFixturesTest` (76 tests).
-- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest` (30 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
+- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest`, `ParsersTest`, `GoldenFixturesTest`, `MerchantNormalizerTest`, `CaptureDeduperTest`, `CategorizerTest` (97 tests).
+- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest`, `CapturePipelineTest` (37 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
 - **Golden fixtures** are real exported notifications (`RawEventExport` files) and CSV rows. Scrub card numbers beyond last4 before committing (the repo should still be private).
 - **Room migration tests** for every schema version, using the committed schema JSON in `app/schemas/`.
 - **Lint** (`./gradlew :app:lintDebug`) stays at zero issues; suppress only with a comment saying why.
@@ -660,4 +660,4 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 - [ ] Whether wallets post group-summary notifications that duplicate the real one. Google Wallet: no summary for a single purchase (channel `tapandpay.transactions.low`). Samsung Wallet: not seen yet.
 - [ ] Whether RBC's CSV has a stable transaction ID (Phase 5).
 - [ ] Whether chequing alerts distinguish debit purchases, e-Transfers, bill payments, and credit card payments clearly enough to set `kind` automatically, or whether that needs rules. So far: a debit purchase is a generic "withdrawal" with no merchant, so it can't be told apart from other withdrawals by the RBC text alone.
-- [ ] **Accounts need several identifiers.** A Google Pay debit purchase shows the card's last 4 (••3881) in the wallet and the chequing account's last 4 (********8805) in the RBC alert. Account matching (dedupe, Phase 2) needs a list of last-4s per account, not one `last4` column (schema v3).
+- [x] **Accounts need several identifiers.** Done in schema v3 (`account_identifiers`). A Google Pay debit purchase shows the card's last 4 (••3881) in the wallet and the chequing account's last 4 (********8805) in the RBC alert. Account matching (dedupe, Phase 2) needs a list of last-4s per account, not one `last4` column (schema v3).

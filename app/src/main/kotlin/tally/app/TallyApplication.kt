@@ -2,6 +2,7 @@ package tally.app
 
 import android.app.Application
 import android.content.Context
+import tally.app.capture.CaptureNotifier
 import tally.app.quickentry.QuickAddShortcut
 
 class TallyApplication : Application() {
@@ -12,6 +13,7 @@ class TallyApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         QuickAddShortcut.publish(this)
+        CaptureNotifier.createChannel(this)
     }
 }
 

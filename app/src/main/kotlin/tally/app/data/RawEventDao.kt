@@ -19,6 +19,22 @@ interface RawEventDao {
     @Query("SELECT * FROM raw_events ORDER BY receivedAt ASC")
     suspend fun getAll(): List<RawEventEntity>
 
+    @Query("UPDATE raw_events SET parseStatus = :status, transactionId = :transactionId WHERE id = :id")
+    suspend fun markParsed(id: String, status: String, transactionId: String?)
+
+    @Query("SELECT * FROM raw_events WHERE transactionId = :transactionId")
+    suspend fun linkedTo(transactionId: String): List<RawEventEntity>
+
+    /** Watched-package events not yet turned into a transaction, oldest first (for re-parse). */
+    @Query(
+        """
+        SELECT * FROM raw_events
+        WHERE transactionId IS NULL AND source IN (:sources) AND parseStatus != 'IGNORED'
+        ORDER BY postedAt ASC
+        """,
+    )
+    suspend fun unlinked(sources: Set<String>): List<RawEventEntity>
+
     /** `IS` instead of `=` so null title/text/bigText compare equal. */
     @Query(
         """

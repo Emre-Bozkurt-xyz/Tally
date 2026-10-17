@@ -124,10 +124,14 @@ fun QuickEntrySheet(
             now = ZonedDateTime.now(),
         ).map { byId.getValue(it) }
     }
-    // Manual entries default to Cash; fall back to any account if Cash was deleted.
+    // New entries default to Cash (or any account if Cash was deleted). Edits keep what the
+    // transaction has, even none: a capture's unknown account must not silently become Cash.
     val account = accounts.find { it.id == accountId }
-        ?: accounts.find { it.id == DefaultData.accountId(DefaultData.CASH_ACCOUNT_NAME) }
-        ?: accounts.firstOrNull()
+        ?: if (request.transactionId != null) {
+            null
+        } else {
+            accounts.find { it.id == DefaultData.accountId(DefaultData.CASH_ACCOUNT_NAME) } ?: accounts.firstOrNull()
+        }
 
     val isEdit = request.transactionId != null
     val ready = amountCents > 0 && !saving && (!isEdit || existing != null)
@@ -165,7 +169,7 @@ fun QuickEntrySheet(
                 AccountPicker(account, accounts, onPick = { accountId = it.id })
                 Spacer(Modifier.weight(1f))
                 if (isEdit) {
-                    Text("Editing", style = MaterialTheme.typography.labelLarge)
+                    Text(existing?.merchantRaw ?: "Editing", style = MaterialTheme.typography.labelLarge)
                 }
                 IconButton(onClick = { noteOpen = !noteOpen }) {
                     Icon(Icons.Default.Edit, contentDescription = "Add a note")

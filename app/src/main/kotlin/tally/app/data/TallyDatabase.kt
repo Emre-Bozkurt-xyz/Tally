@@ -9,6 +9,7 @@ import androidx.room.RoomDatabase
 /**
  * v1: raw events only (Phase 0).
  * v2: transactions, splits, tags, categories, accounts, merchants, aliases, rules (Phase 1).
+ * v3: account_identifiers (several last-4s per account; Phase 2).
  *
  * Every version's schema JSON is committed in `app/schemas/`; migrations are tested
  * against it in `TallyDatabaseMigrationTest`.
@@ -25,16 +26,19 @@ import androidx.room.RoomDatabase
         MerchantEntity::class,
         AliasEntity::class,
         RuleEntity::class,
+        AccountIdentifierEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class TallyDatabase : RoomDatabase() {
     abstract fun rawEventDao(): RawEventDao
     abstract fun categoryDao(): CategoryDao
     abstract fun accountDao(): AccountDao
     abstract fun transactionDao(): TransactionDao
+    abstract fun merchantDao(): MerchantDao
+    abstract fun accountIdentifierDao(): AccountIdentifierDao
 
     companion object {
         const val NAME = "tally.db"

@@ -5,12 +5,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import tally.app.AppContainer
+import tally.app.data.CapturePipeline
 import tally.app.ui.categories.CategoriesScreen
 import tally.app.ui.ledger.LedgerScreen
 import tally.app.ui.ledger.MonthScreen
 import tally.app.ui.rawevents.RawEventDetailScreen
 import tally.app.ui.rawevents.RawEventsScreen
 import tally.app.ui.setup.SetupScreen
+import tally.core.model.ParseStatus
 
 private object Routes {
     const val LEDGER = "ledger"
@@ -51,6 +53,7 @@ fun TallyNavHost(container: AppContainer) {
                 repository = container.rawEvents,
                 onOpenEvent = { nav.navigate(Routes.rawEvent(it)) },
                 onOpenSetup = { nav.navigate(Routes.SETUP) },
+                onReparse = { reparseSummary(container.capture.reparseUnlinked()) },
             )
         }
         composable(Routes.RAW_EVENT) { entry ->
@@ -67,4 +70,11 @@ fun TallyNavHost(container: AppContainer) {
             )
         }
     }
+}
+
+private fun reparseSummary(outcomes: List<CapturePipeline.Outcome>): String {
+    if (outcomes.isEmpty()) return "Nothing to re-parse"
+    val captured = outcomes.count { it is CapturePipeline.Outcome.Captured }
+    val failed = outcomes.count { it is CapturePipeline.Outcome.Marked && it.status == ParseStatus.FAILED }
+    return "Re-parsed ${outcomes.size}: $captured captured, $failed not recognized"
 }

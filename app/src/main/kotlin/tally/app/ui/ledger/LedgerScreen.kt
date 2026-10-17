@@ -53,6 +53,7 @@ import tally.app.data.TransactionEntity
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.theme.OkGreen
 import tally.core.model.Kind
+import tally.core.model.TransactionStatus
 import tally.core.model.Money
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -81,6 +82,9 @@ fun LedgerScreen(
     val accounts by remember { ledger.observeAllAccounts() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val categoryNames = remember(categories) { categories.associate { it.id to it.name } }
+    val merchants by remember { ledger.observeAllMerchants() }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val merchantNames = remember(merchants) { merchants.associate { it.id to it.name } }
     val accountNames = remember(accounts) { accounts.associate { it.id to it.name } }
     // The list is newest first and groupBy keeps first-seen order, so days stay newest first.
     val days = remember(transactions) { transactions.orEmpty().groupBy { it.occurredAtLocal().toLocalDate() } }
@@ -136,13 +140,15 @@ fun LedgerScreen(
                 }
                 items(dayTransactions, key = { it.id }) { transaction ->
                     val categoryName = transaction.categoryId?.let { categoryNames[it] }
-                    val title = transaction.merchantRaw ?: categoryName ?: "Uncategorized"
+                    val merchantName = transaction.merchantId?.let { merchantNames[it] } ?: transaction.merchantRaw
+                    val title = merchantName ?: categoryName ?: "Uncategorized"
                     DeletableRow(onDelete = { delete(transaction, title) }) {
                         TransactionRow(
                             transaction = transaction,
                             title = title,
                             details = listOfNotNull(
-                                categoryName.takeIf { transaction.merchantRaw != null },
+                                "Needs review".takeIf { transaction.status == TransactionStatus.CAPTURED.name },
+                                (categoryName ?: "Uncategorized").takeIf { merchantName != null },
                                 transaction.note,
                                 transaction.accountId?.let { accountNames[it] },
                                 TIME_FORMAT.format(transaction.occurredAtLocal()),

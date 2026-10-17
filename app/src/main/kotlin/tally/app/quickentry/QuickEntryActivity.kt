@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import tally.app.appContainer
+import tally.app.capture.CaptureNotifier
 import tally.app.ui.theme.TallyTheme
 
 /**
@@ -30,7 +31,11 @@ class QuickEntryActivity : ComponentActivity() {
                     ledger = appContainer.ledger,
                     request = request,
                     onFinished = { message ->
-                        if (message != null) Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                        if (message != null) {
+                            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                            // Edited from the capture notification (or the ledger): it's handled.
+                            request.transactionId?.let { CaptureNotifier.cancel(this, it) }
+                        }
                         finish()
                     },
                 )

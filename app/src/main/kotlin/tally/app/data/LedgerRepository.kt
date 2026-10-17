@@ -16,6 +16,7 @@ import java.util.UUID
 class LedgerRepository(
     private val db: TallyDatabase,
     private val clock: Clock = Clock.systemDefaultZone(),
+    private val memory: CaptureMemory = CaptureMemory(db, clock),
 ) {
     private val transactions = db.transactionDao()
 
@@ -29,6 +30,22 @@ class LedgerRepository(
     fun observeAllAccounts(): Flow<List<AccountEntity>> = db.accountDao().observeAll()
 
     fun observeTransactions(): Flow<List<TransactionEntity>> = transactions.observeActive()
+
+    /** Including deleted ones, for labelling old transactions. */
+    fun observeAllMerchants(): Flow<List<MerchantEntity>> = db.merchantDao().observeAll()
+
+    /**
+     * You accepted a capture as suggested (tapped its notification). Returns false if it was
+     * already handled or deleted.
+     */
+    suspend fun confirmCapture(id: String): Boolean {
+        val transaction = transactions.getById(id) ?: return false
+        if (transaction.status != TransactionStatus.CAPTURED.name || transaction.categoryId == null) return false
+        transactions.upsert(transaction.copy(status = TransactionStatus.CONFIRMED.name, updatedAt = clock.millis()))
+        memory.confirmCategory(transaction.merchantId, transaction.categoryId)
+        memory.learnAccount(transaction.id, transaction.accountId)
+        return true
+    }
 
     suspend fun getTransaction(id: String): TransactionEntity? = transactions.getById(id)
 
@@ -85,6 +102,13 @@ class LedgerRepository(
             updatedAt = now,
         )
         transactions.upsert(transaction)
+        if (existing != null) {
+            // Count it once per decision: confirming a capture, or changing the category.
+            if (existing.status == TransactionStatus.CAPTURED.name || existing.categoryId != categoryId) {
+                memory.confirmCategory(existing.merchantId, categoryId)
+            }
+            if (existing.accountId != accountId) memory.learnAccount(existing.id, accountId)
+        }
         return transaction
     }
 

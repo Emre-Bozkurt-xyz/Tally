@@ -13,6 +13,25 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :id AND NOT deleted")
     suspend fun getById(id: String): TransactionEntity?
 
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getByIdIncludingDeleted(id: String): TransactionEntity?
+
+    /**
+     * Captured (non-manual) transactions near a time, with the packages of the notifications
+     * already attached. Includes deleted ones, so the second notification of an ignored
+     * purchase is absorbed instead of creating it again.
+     */
+    @Query(
+        """
+        SELECT t.id AS transactionId, t.amountCents, t.occurredAt, t.accountId,
+               GROUP_CONCAT(r.source) AS rawSources
+        FROM transactions t LEFT JOIN raw_events r ON r.transactionId = t.id
+        WHERE t.source != 'MANUAL' AND t.occurredAt BETWEEN :from AND :to
+        GROUP BY t.id
+        """,
+    )
+    suspend fun dedupeCandidates(from: Long, to: Long): List<DedupeRow>
+
     @Query("SELECT * FROM transactions WHERE NOT deleted ORDER BY occurredAt DESC")
     fun observeActive(): Flow<List<TransactionEntity>>
 
@@ -33,3 +52,12 @@ interface TransactionDao {
 }
 
 data class CategoryUseRow(val categoryId: String, val occurredAt: Long, val zoneId: String)
+
+data class DedupeRow(
+    val transactionId: String,
+    val amountCents: Long,
+    val occurredAt: Long,
+    val accountId: String?,
+    /** Comma-separated package names, or null when none are attached. */
+    val rawSources: String?,
+)
