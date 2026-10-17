@@ -17,11 +17,12 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase 1: manual core | Built. Remaining: place the widget and run the "done when" check on the phone. Ledger, month and category screens checked on the phone; widget installed but not yet placed. |
 | Phase 2: auto capture | Wired end to end: notification → parse → match the wallet/RBC pair → merchant cleanup → memory categorization → capture notification (Change / Ignore / tap to confirm). Parsers know 2 shapes so far (RBC chequing withdrawal, Google Wallet purchase); more as fixtures arrive. Not yet run on a real purchase after wiring. |
 | Phase 3: rules and inbox | Built: rules engine + TOML file (own parser, errors by line), rules / TOML / aliases screens, review inbox with swipe actions and "always do this", transaction detail with tags and splits. Installed; the "done when" check needs a few weeks of real use. |
-| Phase 4 to 6 | Not started. |
+| Phase 6: budgets and insights | Built: budgets (categories dialog; month view and widget with 80% / 100% colors), Stats (6-month chart, net per month, top merchants), Subscriptions (detected), Owed to me (settle / undo). |
+| Phase 4 and 5 | Not started. Phase 4 waits for the home server details; Phase 5 for a real RBC CSV. |
 
 What's verified so far:
-- `./gradlew :core:test`: 113 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures, merchant cleanup, dedupe, categorizer, rules engine, rules TOML, splits).
-- `./gradlew :app:testDebugUnitTest`: 48 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v4 migration, capture pipeline end to end, inbox, rules repository (TOML round trip, always-do-this, aliases renaming the past), tags, splits, seed data, quick-entry save and edit, delete and undo, category tree, category edits, deleting other apps' raw events).
+- `./gradlew :core:test`: 119 tests passing (budgets, trends, subscriptions, amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures, merchant cleanup, dedupe, categorizer, rules engine, rules TOML, splits).
+- `./gradlew :app:testDebugUnitTest`: 50 tests passing (budgets, settling owed parts, Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v5 migration, capture pipeline end to end, inbox, rules repository (TOML round trip, always-do-this, aliases renaming the past), tags, splits, seed data, quick-entry save and edit, delete and undo, category tree, category edits, deleting other apps' raw events).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
 - Debug build installed on the phone (`dev.emre.tally.debug`).
 
@@ -138,6 +139,7 @@ tally/
         inbox/                  # InboxScreen, CategoryPickerSheet (always-do-this)
         rules/                  # RulesScreen, TomlEditorScreen, AliasesScreen
         transaction/            # TransactionScreen (detail, tags, splits)
+        insights/               # StatsScreen, SubscriptionsScreen, OwedScreen
       quickentry/               # QuickEntryActivity, QuickEntrySheet, QuickEntryTileService, QuickAddShortcut
       widget/                   # QuickAddWidget (Glance) + receiver
       sync/                     # later: SyncWorker (Phase 4)
@@ -217,7 +219,7 @@ It also holds the "Log all packages" toggle and listener health (section 9).
 
 All IDs are UUID strings (generated on device, so sync never needs ID remapping). Every syncable table has `updatedAt: Long` (epoch ms) and `deleted: Boolean` (soft delete for sync).
 
-**Database v4 (built).** v4 adds `aliases.priority` (first matching alias wins). v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`; v3 adds `account_identifiers` (`AccountIdentifierEntity`: id, accountId, last4, updatedAt, deleted), several last-4s per account, learned when you set the account on a captured transaction. Tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
+**Database v5 (built).** v5 adds `splits.settledAt` (owed portions paid back). v4 adds `aliases.priority` (first matching alias wins). v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`; v3 adds `account_identifiers` (`AccountIdentifierEntity`: id, accountId, last4, updatedAt, deleted), several last-4s per account, learned when you set the account on a captured transaction. Tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
 
 ```kotlin
 // Built (v1). Table "raw_events", indexed on receivedAt, sbnKey, source.
@@ -628,19 +630,19 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 ### Phase 6 (M6): Budgets and insights (1 weekend, then ongoing)
 
-- [ ] Monthly budget per category (already in schema); weekly budget derived for the widget.
-- [ ] Widget progress bar: week spend vs. budget, color shift past 80% and 100%.
-- [ ] On-device stats screen with Vico: category breakdown, month over month, top merchants.
-- [ ] Income vs. spend from deposit alerts (`kind = INCOME`), net per month.
-- [ ] Recurring detection: same merchant + similar amount at ~monthly interval gets flagged as a subscription; list them on one screen with yearly cost.
-- [ ] "Owed to me" view from splits with `owedBy`, with a mark-as-settled action.
+- [x] Monthly budget per category (Categories > tap a category). Total = per top-level category its own budget, else the sum of its subcategories' (`core/report/Budgets`), so they never double count. Weekly = total x 12 / 52.
+- [x] Widget progress bar: week spend vs. budget, color shift past 80% (tertiary) and 100% (error). The month view uses the same thresholds (`BudgetStatus`) per category and overall.
+- [x] On-device stats screen (menu > Stats): 6-month column chart, net per month, top merchants over 30 days. Category breakdown stays in the month view. Drawn with plain Compose instead of Vico (a handful of bars didn't justify the dependency).
+- [x] Income vs. spend, net per month (Stats). Income only appears once a deposit parser exists (needs a deposit notification fixture).
+- [x] Recurring detection (`Trends.recurring`): same merchant, 2+ charges, every gap 25 to 35 days (monthly) or 350 to 380 (yearly), amounts within 10% of the median, last charge within two periods. Menu > Subscriptions lists them with yearly cost and next expected date.
+- [x] "Owed to me" (menu): outstanding parts grouped by person, Settled / Undo, recently settled list. Owed parts never count as spending.
 
 ---
 
 ## 8. Testing strategy
 
-- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest`, `ParsersTest`, `GoldenFixturesTest`, `MerchantNormalizerTest`, `CaptureDeduperTest`, `CategorizerTest`, `RulesEngineTest`, `RulesTomlTest`, `SplitsTest` (113 tests).
-- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest`, `CapturePipelineTest`, `RulesRepositoryTest` (48 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
+- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest`, `ParsersTest`, `GoldenFixturesTest`, `MerchantNormalizerTest`, `CaptureDeduperTest`, `CategorizerTest`, `RulesEngineTest`, `RulesTomlTest`, `SplitsTest`, `BudgetsAndTrendsTest` (119 tests).
+- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest`, `CapturePipelineTest`, `RulesRepositoryTest` (50 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
 - **Golden fixtures** are real exported notifications (`RawEventExport` files) and CSV rows. Scrub card numbers beyond last4 before committing (the repo should still be private).
 - **Room migration tests** for every schema version, using the committed schema JSON in `app/schemas/`.
 - **Lint** (`./gradlew :app:lintDebug`) stays at zero issues; suppress only with a comment saying why.

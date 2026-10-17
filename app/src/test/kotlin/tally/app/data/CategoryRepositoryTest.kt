@@ -85,6 +85,15 @@ class CategoryRepositoryTest {
     }
 
     @Test
+    fun `budgets can be set and cleared, never zero or negative`() = runTest {
+        assertNull(repo.setBudget(food, 40000))
+        assertEquals(40000L, byName("Food").monthlyBudgetCents)
+        assertNotNull(repo.setBudget(food, 0))
+        assertNull(repo.setBudget(food, null))
+        assertNull(byName("Food").monthlyBudgetCents)
+    }
+
+    @Test
     fun `pinning toggles`() = runTest {
         assertTrue(byName("Coffee").pinned)
         repo.setPinned(coffee, false)

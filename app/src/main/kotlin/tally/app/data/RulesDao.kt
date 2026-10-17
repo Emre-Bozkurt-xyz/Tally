@@ -79,6 +79,13 @@ interface SplitDao {
     @Query("SELECT * FROM splits WHERE NOT deleted")
     suspend fun getAll(): List<SplitEntity>
 
+    /** Portions someone owes you, settled or not. */
+    @Query("SELECT * FROM splits WHERE owedBy IS NOT NULL AND NOT deleted")
+    fun observeOwed(): Flow<List<SplitEntity>>
+
+    @Query("UPDATE splits SET settledAt = :settledAt, updatedAt = :now WHERE id = :id")
+    suspend fun setSettled(id: String, settledAt: Long?, now: Long)
+
     @Query("UPDATE splits SET deleted = 1, updatedAt = :now WHERE id = :id")
     suspend fun delete(id: String, now: Long)
 }

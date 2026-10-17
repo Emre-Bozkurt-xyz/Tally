@@ -77,6 +77,9 @@ fun LedgerScreen(
     onOpenInbox: () -> Unit,
     onOpenCategories: () -> Unit,
     onOpenRules: () -> Unit,
+    onOpenStats: () -> Unit,
+    onOpenSubscriptions: () -> Unit,
+    onOpenOwed: () -> Unit,
     onOpenSetup: () -> Unit,
     onOpenRawEvents: () -> Unit,
     onOpenTransaction: (String) -> Unit,
@@ -136,6 +139,9 @@ fun LedgerScreen(
                         Icon(Icons.Default.DateRange, contentDescription = "Month view")
                     }
                     OverflowMenu(
+                        "Stats" to onOpenStats,
+                        "Subscriptions" to onOpenSubscriptions,
+                        "Owed to me" to onOpenOwed,
                         "Categories" to onOpenCategories,
                         "Rules" to onOpenRules,
                         "Setup" to onOpenSetup,

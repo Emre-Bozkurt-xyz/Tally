@@ -52,6 +52,14 @@ class CategoryRepository(
         null
     }
 
+    /** Sets or clears ([cents] null) a monthly budget. */
+    suspend fun setBudget(id: String, cents: Long?): String? = write { all ->
+        val current = all.find { it.id == id } ?: return@write "That category no longer exists"
+        if (cents != null && cents <= 0) return@write "A budget must be more than \$0"
+        dao.upsertAll(listOf(current.copy(monthlyBudgetCents = cents, updatedAt = clock.millis())))
+        null
+    }
+
     suspend fun setPinned(id: String, pinned: Boolean): String? = write { all ->
         val current = all.find { it.id == id } ?: return@write "That category no longer exists"
         dao.upsertAll(listOf(current.copy(pinned = pinned, updatedAt = clock.millis())))

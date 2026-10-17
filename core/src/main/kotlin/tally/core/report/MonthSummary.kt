@@ -11,6 +11,8 @@ data class LedgerEntry(
     val kind: Kind,
     val categoryId: String?,
     val date: LocalDate,
+    /** For per-merchant reports (top merchants, subscriptions). */
+    val merchantId: String? = null,
 )
 
 /**

@@ -94,6 +94,14 @@ class LedgerRepository(
 
     suspend fun deleteSplit(id: String) = db.splitDao().delete(id, clock.millis())
 
+    fun observeOwed(): Flow<List<SplitEntity>> = db.splitDao().observeOwed()
+
+    /** Marks an owed portion paid back (or not, to undo). */
+    suspend fun setSettled(splitId: String, settled: Boolean) {
+        val now = clock.millis()
+        db.splitDao().setSettled(splitId, if (settled) now else null, now)
+    }
+
     /** How many things wait in the inbox. */
     fun observeInboxCount(): Flow<Int> =
         combine(observeNeedsReview(), observeUnreadNotifications()) { review, unread -> review.size + unread.size }

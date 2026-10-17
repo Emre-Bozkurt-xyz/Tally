@@ -15,7 +15,7 @@ import java.time.format.DateTimeFormatter
 
 /** A transaction as reports count it, splits expanded (owed parts drop out of spending). */
 fun TransactionEntity.ledgerEntries(splits: List<SplitEntity>): List<LedgerEntry> =
-    LedgerEntry(amountCents, Kind.valueOf(kind), categoryId, occurredAtLocal().toLocalDate())
+    LedgerEntry(amountCents, Kind.valueOf(kind), categoryId, occurredAtLocal().toLocalDate(), merchantId)
         .withSplits(splits.map { SplitPart(it.amountCents, it.categoryId, it.owedBy) })
 
 /** Money out as "$4.25", money in (refunds, deposits) as "+$4.25". */

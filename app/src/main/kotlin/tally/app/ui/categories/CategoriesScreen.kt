@@ -44,6 +44,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import tally.core.model.Money
 import tally.app.data.CategoryEntity
 import tally.app.data.CategoryRepository
 import tally.app.data.LedgerRepository
@@ -114,8 +117,12 @@ fun CategoriesScreen(ledger: LedgerRepository, repository: CategoryRepository, o
             category = category,
             parents = tree.filter { it.parentId == null && it.id != category?.id },
             canHaveParent = category == null || category.id !in parentIds,
-            onSave = { name, parentId ->
-                if (category == null) repository.add(name, parentId) else repository.update(category.id, name, parentId)
+            onSave = { name, parentId, budgetCents ->
+                if (category == null) {
+                    repository.add(name, parentId)
+                } else {
+                    repository.update(category.id, name, parentId) ?: repository.setBudget(category.id, budgetCents)
+                }
             },
             onDelete = category?.let { { repository.delete(it.id) } },
             onDismiss = { editing = null },
@@ -140,10 +147,19 @@ private fun CategoryRow(
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (child) Spacer(Modifier.width(24.dp))
-                Text(
-                    category.name,
-                    style = if (child) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium,
-                )
+                Column {
+                    Text(
+                        category.name,
+                        style = if (child) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium,
+                    )
+                    category.monthlyBudgetCents?.let {
+                        Text(
+                            "${Money.format(it)} a month",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         },
         trailingContent = {
@@ -178,13 +194,16 @@ private fun CategoryDialog(
     category: CategoryEntity?,
     parents: List<CategoryEntity>,
     canHaveParent: Boolean,
-    onSave: suspend (name: String, parentId: String?) -> String?,
+    onSave: suspend (name: String, parentId: String?, budgetCents: Long?) -> String?,
     onDelete: (suspend () -> String?)?,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(category?.name.orEmpty()) }
     var parentId by remember { mutableStateOf(category?.parentId) }
+    var budget by remember {
+        mutableStateOf(category?.monthlyBudgetCents?.let { "${it / 100}.${(it % 100).toString().padStart(2, '0')}" }.orEmpty())
+    }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun submit(action: suspend () -> String?) {
@@ -228,10 +247,39 @@ private fun CategoryDialog(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
+                if (category != null) {
+                    OutlinedTextField(
+                        value = budget,
+                        onValueChange = {
+                            budget = it
+                            error = null
+                        },
+                        label = { Text("Monthly budget (optional)") },
+                        supportingText = {
+                            Text(
+                                if (category.parentId == null) {
+                                    "Counts for the whole group; subcategory budgets are then ignored in totals."
+                                } else {
+                                    "Counted in totals only if the parent has no budget."
+                                },
+                            )
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { submit { onSave(name, parentId) } }) { Text("Save") }
+            TextButton(onClick = {
+                val cents = parseBudget(budget)
+                if (cents == null) {
+                    error = "Budgets look like 400 or 400.00"
+                } else {
+                    submit { onSave(name, parentId, cents.getOrNull()) }
+                }
+            }) { Text("Save") }
         },
         dismissButton = {
             Row {
@@ -274,4 +322,12 @@ private fun ParentPicker(parents: List<CategoryEntity>, selectedId: String?, onP
             }
         }
     }
+}
+
+/** Blank is no budget (success(null)); otherwise dollars to cents, or null if unreadable. */
+private fun parseBudget(text: String): Result<Long?>? {
+    val trimmed = text.trim().removePrefix("$")
+    if (trimmed.isEmpty()) return Result.success(null)
+    val match = Regex("(\\d+)(?:\\.(\\d{1,2}))?").matchEntire(trimmed) ?: return null
+    return Result.success(match.groupValues[1].toLong() * 100 + match.groupValues[2].padEnd(2, '0').ifEmpty { "00" }.toLong())
 }

@@ -9,6 +9,9 @@ import tally.app.AppContainer
 import tally.app.data.CapturePipeline
 import tally.app.ui.categories.CategoriesScreen
 import tally.app.ui.inbox.InboxScreen
+import tally.app.ui.insights.OwedScreen
+import tally.app.ui.insights.StatsScreen
+import tally.app.ui.insights.SubscriptionsScreen
 import tally.app.ui.ledger.LedgerScreen
 import tally.app.ui.ledger.MonthScreen
 import tally.app.ui.rawevents.RawEventDetailScreen
@@ -25,6 +28,9 @@ private object Routes {
     const val INBOX = "inbox"
     const val TRANSACTION = "transactions/{id}"
     const val MONTH = "month"
+    const val STATS = "stats"
+    const val SUBSCRIPTIONS = "subscriptions"
+    const val OWED = "owed"
     const val CATEGORIES = "categories"
     const val RULES = "rules"
     const val RULES_TOML = "rules/toml"
@@ -53,6 +59,9 @@ fun TallyNavHost(container: AppContainer, openTransactionId: String? = null) {
                 onOpenInbox = { nav.navigate(Routes.INBOX) },
                 onOpenCategories = { nav.navigate(Routes.CATEGORIES) },
                 onOpenRules = { nav.navigate(Routes.RULES) },
+                onOpenStats = { nav.navigate(Routes.STATS) },
+                onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) },
+                onOpenOwed = { nav.navigate(Routes.OWED) },
                 onOpenSetup = { nav.navigate(Routes.SETUP) },
                 onOpenRawEvents = { nav.navigate(Routes.RAW_EVENTS) },
                 onOpenTransaction = { nav.navigate(Routes.transaction(it)) },
@@ -72,6 +81,19 @@ fun TallyNavHost(container: AppContainer, openTransactionId: String? = null) {
                 ledger = container.ledger,
                 rules = container.rules,
                 onOpenRawEvent = { nav.navigate(Routes.rawEvent(it)) },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.STATS) {
+            StatsScreen(ledger = container.ledger, onBack = { nav.popBackStack() })
+        }
+        composable(Routes.SUBSCRIPTIONS) {
+            SubscriptionsScreen(ledger = container.ledger, onBack = { nav.popBackStack() })
+        }
+        composable(Routes.OWED) {
+            OwedScreen(
+                ledger = container.ledger,
+                onOpenTransaction = { nav.navigate(Routes.transaction(it)) },
                 onBack = { nav.popBackStack() },
             )
         }

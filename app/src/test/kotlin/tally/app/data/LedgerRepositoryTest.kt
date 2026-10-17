@@ -117,6 +117,19 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun `owed parts can be settled and unsettled`() = runTest {
+        val dinner = ledger.saveQuickEntry(null, 3000, groceries, cash, note = null)
+        ledger.addSplit(dinner.id, 1000, null, owedBy = "Sam")
+        val part = ledger.observeOwed().first().single()
+        assertNull(part.settledAt)
+
+        ledger.setSettled(part.id, true)
+        assertEquals(now.toEpochMilli(), ledger.observeOwed().first().single().settledAt)
+        ledger.setSettled(part.id, false)
+        assertNull(ledger.observeOwed().first().single().settledAt)
+    }
+
+    @Test
     fun `category uses only cover the ranking window`() = runTest {
         ledger.saveQuickEntry(null, 100, groceries, cash, note = null)
         now = now.plus(Duration.ofDays(CategoryRanking.WINDOW_DAYS - 1))

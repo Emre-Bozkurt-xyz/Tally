@@ -53,6 +53,9 @@ import tally.app.ui.ledger.ledgerEntries
 import tally.app.ui.theme.DarkColors
 import tally.app.ui.theme.LightColors
 import tally.core.model.Money
+import tally.core.report.BudgetStatus
+import tally.core.report.BudgetedCategory
+import tally.core.report.Budgets
 import tally.core.report.WeekSpend
 import java.time.LocalDate
 import java.time.ZoneId
@@ -105,7 +108,9 @@ class QuickAddWidget : GlanceAppWidget() {
                     entries = entries,
                     today = today,
                     firstDayOfWeek = firstDay,
-                    monthlyBudgetsCents = categories.filter { it.parentId == null }.mapNotNull { it.monthlyBudgetCents },
+                    monthlyBudgetsCents = listOfNotNull(
+                        Budgets.monthlyTotal(categories.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) }),
+                    ),
                 )
                 val pinned = categories.chipCategories().filter { it.pinned }.take(MAX_CATEGORIES)
                 return WidgetData(week, pinned, ledger.observeInboxCount().first())
@@ -192,7 +197,11 @@ class QuickAddWidget : GlanceAppWidget() {
                 LinearProgressIndicator(
                     progress = (week.spentCents.toFloat() / budget).coerceIn(0f, 1f),
                     modifier = GlanceModifier.fillMaxWidth(),
-                    color = if (week.spentCents > budget) GlanceTheme.colors.error else GlanceTheme.colors.primary,
+                    color = when (BudgetStatus.of(week.spentCents, budget)) {
+                        BudgetStatus.OK -> GlanceTheme.colors.primary
+                        BudgetStatus.WARNING -> GlanceTheme.colors.tertiary
+                        BudgetStatus.OVER -> GlanceTheme.colors.error
+                    },
                     backgroundColor = GlanceTheme.colors.surfaceVariant,
                 )
             }

@@ -36,7 +36,7 @@ class TallyDatabaseMigrationTest {
     )
 
     @Test
-    fun `1 to 4 keeps raw events and creates the new tables`() = runTest {
+    fun `1 to 5 keeps raw events and creates the new tables`() = runTest {
         helper.createDatabase(1).use { connection ->
             connection.execSQL(
                 """
@@ -52,6 +52,7 @@ class TallyDatabaseMigrationTest {
         helper.runMigrationsAndValidate(2).close()
         helper.runMigrationsAndValidate(3).close()
         helper.runMigrationsAndValidate(4).close()
+        helper.runMigrationsAndValidate(5).close()
 
         val db = Room.databaseBuilder(context, TallyDatabase::class.java, dbFile.absolutePath)
             .setDriver(driver)

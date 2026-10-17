@@ -11,6 +11,7 @@ import androidx.room.RoomDatabase
  * v2: transactions, splits, tags, categories, accounts, merchants, aliases, rules (Phase 1).
  * v3: account_identifiers (several last-4s per account; Phase 2).
  * v4: aliases.priority (alias order; Phase 3).
+ * v5: splits.settledAt ("owed to me"; Phase 6).
  *
  * Every version's schema JSON is committed in `app/schemas/`; migrations are tested
  * against it in `TallyDatabaseMigrationTest`.
@@ -29,9 +30,9 @@ import androidx.room.RoomDatabase
         RuleEntity::class,
         AccountIdentifierEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
 )
 abstract class TallyDatabase : RoomDatabase() {
     abstract fun rawEventDao(): RawEventDao

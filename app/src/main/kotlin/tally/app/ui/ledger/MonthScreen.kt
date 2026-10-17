@@ -33,6 +33,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tally.app.data.LedgerRepository
 import tally.core.model.Money
+import tally.app.ui.theme.WarnAmber
+import tally.core.report.BudgetStatus
+import tally.core.report.BudgetedCategory
+import tally.core.report.Budgets
 import tally.core.report.CategoryTotal
 import tally.core.report.MonthSummary
 import java.time.YearMonth
@@ -58,6 +62,9 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
         val splitsByTransaction = splits.groupBy { it.transactionId }
         val entries = transactions.flatMap { it.ledgerEntries(splitsByTransaction[it.id].orEmpty()) }
         MonthSummary.of(month, entries) { id -> byId[id]?.parentId }
+    }
+    val totalBudget = remember(categories) {
+        Budgets.monthlyTotal(categories.filter { !it.deleted }.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) })
     }
     fun nameOf(total: CategoryTotal) = total.categoryId?.let { byId[it]?.name } ?: "Uncategorized"
 
@@ -103,7 +110,13 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(Money.format(summary.spentCents), style = MaterialTheme.typography.displaySmall)
-                    Text("spent", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        totalBudget?.let { "spent of ${Money.format(it)}" } ?: "spent",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    totalBudget?.let { budget ->
+                        BudgetBar(summary.spentCents, budget, Modifier.fillMaxWidth().padding(top = 4.dp))
+                    }
                     if (summary.incomeCents != 0L) {
                         Text(
                             "Income ${Money.format(summary.incomeCents)}",
@@ -126,11 +139,23 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
             }
             summary.categories.forEach { total ->
                 item(key = "top:${total.categoryId}") {
-                    CategoryRow(name = nameOf(total), cents = total.cents, ofCents = summary.spentCents, child = false)
+                    CategoryRow(
+                        name = nameOf(total),
+                        cents = total.cents,
+                        ofCents = summary.spentCents,
+                        budgetCents = total.categoryId?.let { byId[it]?.monthlyBudgetCents },
+                        child = false,
+                    )
                 }
                 total.children.forEach { child ->
                     item(key = "child:${child.categoryId}") {
-                        CategoryRow(name = nameOf(child), cents = child.cents, ofCents = summary.spentCents, child = true)
+                        CategoryRow(
+                            name = nameOf(child),
+                            cents = child.cents,
+                            ofCents = summary.spentCents,
+                            budgetCents = child.categoryId?.let { byId[it]?.monthlyBudgetCents },
+                            child = true,
+                        )
                     }
                 }
             }
@@ -139,7 +164,7 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
 }
 
 @Composable
-private fun CategoryRow(name: String, cents: Long, ofCents: Long, child: Boolean) {
+private fun CategoryRow(name: String, cents: Long, ofCents: Long, budgetCents: Long?, child: Boolean) {
     val share = if (ofCents > 0) (cents.toFloat() / ofCents).coerceIn(0f, 1f) else 0f
     ListItem(
         modifier = if (child) Modifier.padding(start = 24.dp) else Modifier,
@@ -149,15 +174,25 @@ private fun CategoryRow(name: String, cents: Long, ofCents: Long, child: Boolean
                 style = if (child) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
             )
         },
-        supportingContent = if (child) {
-            null
-        } else {
-            {
-                LinearProgressIndicator(
-                    progress = { share },
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    drawStopIndicator = {},
-                )
+        // With a budget: progress against it, colored by status. Without: share of the month.
+        supportingContent = when {
+            budgetCents != null -> {
+                {
+                    Column {
+                        Text("of ${Money.format(budgetCents)}", style = MaterialTheme.typography.bodySmall)
+                        BudgetBar(cents, budgetCents, Modifier.fillMaxWidth().padding(top = 4.dp))
+                    }
+                }
+            }
+            child -> null
+            else -> {
+                {
+                    LinearProgressIndicator(
+                        progress = { share },
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        drawStopIndicator = {},
+                    )
+                }
             }
         },
         trailingContent = {
@@ -166,5 +201,21 @@ private fun CategoryRow(name: String, cents: Long, ofCents: Long, child: Boolean
                 style = if (child) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
             )
         },
+    )
+}
+
+/** Spending against a budget: primary under 80%, amber to 100%, red over. */
+@Composable
+internal fun BudgetBar(spentCents: Long, budgetCents: Long, modifier: Modifier = Modifier) {
+    val color = when (BudgetStatus.of(spentCents, budgetCents)) {
+        BudgetStatus.OK -> MaterialTheme.colorScheme.primary
+        BudgetStatus.WARNING -> WarnAmber
+        BudgetStatus.OVER -> MaterialTheme.colorScheme.error
+    }
+    LinearProgressIndicator(
+        progress = { if (budgetCents > 0) (spentCents.toFloat() / budgetCents).coerceIn(0f, 1f) else 1f },
+        color = color,
+        modifier = modifier,
+        drawStopIndicator = {},
     )
 }

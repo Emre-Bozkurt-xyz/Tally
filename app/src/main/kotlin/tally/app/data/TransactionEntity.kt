@@ -48,6 +48,8 @@ data class SplitEntity(
     /** Free-text name of whoever owes this portion; null for a plain category split. */
     val owedBy: String?,
     val updatedAt: Long,
+    /** When an owed portion was paid back (epoch ms); null while outstanding. (v5) */
+    val settledAt: Long? = null,
     val deleted: Boolean = false,
 )
 
