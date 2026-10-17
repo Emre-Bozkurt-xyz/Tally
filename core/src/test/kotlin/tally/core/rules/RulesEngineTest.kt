@@ -48,4 +48,19 @@ class RulesEngineTest {
         assertNotNull(Rule.patternError(" "))
         assertNull(RulesEngine(listOf(Rule("bad", 0, "Tim (Hortons", categoryId = "c"))).match("Tim (Hortons", 1, null))
     }
+
+    @Test
+    fun `plain names read back from their pattern, real regexes don't`() {
+        assertEquals("Sobeys (DoorDash)", Rule.literalName(Rule.literal("Sobeys (DoorDash)")))
+        assertEquals("Foodie Fruitie", Rule.literalName("Foodie Fruitie"))
+        assertNull(Rule.literalName("Uber.*"))
+        assertNull(Rule.literalName("Tim Hortons|Second Cup"))
+    }
+
+    @Test
+    fun `spellings of one merchant share a key`() {
+        assertEquals(Rule.merchantKey("Foodie Fruitie"), Rule.merchantKey("FOODIE-FRUITIE"))
+        assertEquals(Rule.merchantKey("Foodie Fruitie"), Rule.merchantKey("foodie  fruitie"))
+        assert(Rule.merchantKey("Foodie Fruitie") != Rule.merchantKey("Foodie Fruit"))
+    }
 }

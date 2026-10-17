@@ -1,8 +1,9 @@
 package tally.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +58,7 @@ enum class Tab(val route: String, val label: String, val icon: () -> ImageVector
 val LocalBottomClearance = compositionLocalOf { 0.dp }
 
 private val BarHeight = 62.dp
+private const val LABEL_MS = 170
 private val BarGap = 12.dp
 
 @Composable
@@ -114,19 +117,20 @@ fun TallyBottomBar(current: Tab?, inboxCount: Int, onSelect: (Tab) -> Unit, onAd
 @Composable
 private fun NavItem(tab: Tab, selected: Boolean, badge: Int, onClick: () -> Unit) {
     val colors = Tally.colors
+    // One short tween for the pill and the label together; springs here felt slow and wobbly.
+    val background by animateColorAsState(if (selected) colors.navSelected else colors.navSelected.copy(alpha = 0f), tween(LABEL_MS))
     Row(
         modifier = Modifier
             .height(50.dp)
             .widthIn(min = 50.dp)
             .clip(CircleShape)
-            .background(if (selected) colors.navSelected else Color.Transparent)
+            .background(background)
             .clickable(role = Role.Tab, onClick = onClick)
             .semantics {
                 this.selected = selected
                 contentDescription = if (badge > 0) "${tab.label}, $badge to review" else tab.label
             }
-            .padding(horizontal = 14.dp)
-            .animateContentSize(spring(stiffness = 600f)),
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -148,7 +152,11 @@ private fun NavItem(tab: Tab, selected: Boolean, badge: Int, onClick: () -> Unit
                 }
             }
         }
-        AnimatedVisibility(selected, enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
+        AnimatedVisibility(
+            selected,
+            enter = fadeIn(tween(LABEL_MS)) + expandHorizontally(tween(LABEL_MS, easing = FastOutSlowInEasing), expandFrom = Alignment.Start),
+            exit = fadeOut(tween(LABEL_MS / 2)) + shrinkHorizontally(tween(LABEL_MS, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Start),
+        ) {
             Text(
                 tab.label,
                 style = MaterialTheme.typography.labelLarge,

@@ -15,6 +15,7 @@ import tally.app.ui.components.bleed
 import tally.app.ui.components.MonoLabel
 import tally.app.ui.components.PillButton
 import tally.app.ui.components.PillChip
+import tally.app.ui.components.SheetHandle
 import tally.app.ui.components.SoftTextField
 import tally.app.ui.theme.Tally
 import tally.app.ui.theme.TallyIcons
@@ -299,18 +300,6 @@ fun QuickEntrySheet(
             }
         }
     }
-}
-
-/** The small pill at the top of a sheet. */
-@Composable
-internal fun SheetHandle() {
-    Box(
-        Modifier
-            .padding(top = 10.dp, bottom = 6.dp)
-            .size(width = 36.dp, height = 4.dp)
-            .clip(CircleShape)
-            .background(Tally.colors.faint.copy(alpha = 0.5f)),
-    )
 }
 
 @Composable

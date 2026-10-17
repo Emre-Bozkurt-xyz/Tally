@@ -83,5 +83,7 @@ object TallyIcons {
     val Dots by lazy { icon("dots", "M5 12h.01", "M12 12h.01", "M19 12h.01", stroke = 3f) }
     val Download by lazy { icon("download", "M12 3v12", "M7 10l5 5 5-5", "M5 21h14") }
     val Code by lazy { icon("code", "M16 18l6-6-6-6", "M8 6l-6 6 6 6") }
+    val Search by lazy { icon("search", "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z", "M20 20l-4-4") }
+    val Reorder by lazy { icon("reorder", "M7 4v16", "M3 8l4-4 4 4", "M17 20V4", "M13 16l4 4 4-4") }
     val Phone by lazy { icon("phone", "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z", "M11 18h2") }
 }

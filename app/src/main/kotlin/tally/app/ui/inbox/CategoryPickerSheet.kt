@@ -24,7 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tally.app.data.CategoryEntity
 import tally.app.data.TransactionEntity
-import tally.app.quickentry.SheetHandle
+import tally.app.ui.components.SheetHandle
 import tally.app.ui.components.AmountText
 import tally.app.ui.components.LetterAvatar
 import tally.app.ui.components.MonoLabel

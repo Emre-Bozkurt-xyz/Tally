@@ -27,6 +27,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import tally.app.ui.components.ScreenPadding
+import tally.app.ui.theme.GeistMono
+import tally.app.ui.theme.Tally
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import tally.app.data.RulesRepository
@@ -86,19 +94,24 @@ fun TomlEditorScreen(rules: RulesRepository, onBack: () -> Unit) {
             messages.forEach { message ->
                 Text(
                     message,
-                    color = if (validText != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    color = if (validText != null) Tally.colors.positive else Tally.colors.over,
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 2.dp),
                 )
             }
-            Row(Modifier.padding(8.dp)) {
-                OutlinedTextField(
-                    value = text.orEmpty(),
-                    onValueChange = { text = it },
-                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 400.dp),
-                )
-            }
+            BasicTextField(
+                value = text.orEmpty(),
+                onValueChange = { text = it },
+                textStyle = TextStyle(fontFamily = GeistMono, fontSize = 13.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                modifier = Modifier
+                    .padding(horizontal = ScreenPadding, vertical = 10.dp)
+                    .fillMaxWidth()
+                    .heightIn(min = 400.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Tally.colors.card)
+                    .padding(16.dp),
+            )
         }
     }
 }

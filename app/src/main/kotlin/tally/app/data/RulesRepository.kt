@@ -209,8 +209,10 @@ class RulesRepository(
 
     /**
      * "Always do this": from now on, [merchantName] goes to [categoryId] (only up to
-     * [maxAmountCents] if set). The new rule runs before all others. With [applyToPast], past
-     * transactions from that merchant get the category too; returns how many changed.
+     * [maxAmountCents] if set), without asking. The rule runs before all others. A plain-name
+     * rule for the same merchant (any capitalization or punctuation) is updated rather than
+     * duplicated, and extra copies are removed. With [applyToPast], past transactions from
+     * that merchant get the category too; returns how many changed.
      */
     suspend fun alwaysCategorize(
         merchantId: String,
@@ -221,22 +223,24 @@ class RulesRepository(
     ): Int = db.useWriterConnection { connection ->
         connection.immediateTransaction {
             val now = clock.millis()
-            val first = rules.getActive().minOfOrNull { it.priority } ?: 0
-            rules.upsertAll(
-                listOf(
-                    RuleEntity(
-                        id = UUID.randomUUID().toString(),
-                        priority = first - 1,
-                        merchantPattern = Rule.literal(merchantName),
-                        minAmountCents = null,
-                        maxAmountCents = maxAmountCents,
-                        accountId = null,
-                        categoryId = categoryId,
-                        tagsCsv = null,
-                        updatedAt = now,
-                    ),
-                ),
+            val active = rules.getActive()
+            val first = active.minOfOrNull { it.priority } ?: 0
+            val key = Rule.merchantKey(merchantName)
+            // Same merchant, no other conditions: the one "always" rule for it.
+            val same = active.filter { rule ->
+                rule.accountId == null && rule.minAmountCents == null &&
+                    Rule.literalName(rule.merchantPattern)?.let(Rule::merchantKey) == key
+            }
+            val kept = same.firstOrNull()
+            val rule = (kept ?: RuleEntity(UUID.randomUUID().toString(), 0, "", null, null, null, categoryId, null, now)).copy(
+                priority = if (kept != null && kept.priority == first) first else first - 1,
+                merchantPattern = Rule.literal(merchantName),
+                maxAmountCents = maxAmountCents,
+                categoryId = categoryId,
+                ask = false,
+                updatedAt = now,
             )
+            rules.upsertAll(listOf(rule) + same.drop(1).map { it.copy(deleted = true, updatedAt = now) })
             if (applyToPast) {
                 db.transactionDao().categorizeMerchant(merchantId, categoryId, maxAmountCents ?: Long.MAX_VALUE, now)
             } else {

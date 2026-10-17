@@ -38,7 +38,29 @@ data class Rule(
             }
         }
 
-        private const val REGEX_SPECIAL = "\\^$.|?*+()[]{}"
+        /**
+         * The name a pattern matches if it's a plain name ([literal] output, or typed without
+         * regex syntax), or null if it's a real regex ("Uber.*", "A|B").
+         */
+        fun literalName(pattern: String): String? = buildString {
+            var i = 0
+            while (i < pattern.length) {
+                val c = pattern[i]
+                if (c == '\\' && i + 1 < pattern.length && pattern[i + 1] in REGEX_SPECIAL) {
+                    append(pattern[i + 1])
+                    i += 2
+                    continue
+                }
+                if (c in REGEX_SPECIAL) return null
+                append(c)
+                i++
+            }
+        }
+
+        /** Two spellings of one merchant ("Foodie Fruitie", "FOODIE-FRUITIE") share this key. */
+        fun merchantKey(name: String): String = name.lowercase().filter { it.isLetterOrDigit() }
+
+        private const val REGEX_SPECIAL ="\\^$.|?*+()[]{}"
     }
 }
 

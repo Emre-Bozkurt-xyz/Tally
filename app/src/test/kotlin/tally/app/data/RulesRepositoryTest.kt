@@ -111,6 +111,37 @@ class RulesRepositoryTest {
     }
 
     @Test
+    fun `always do this updates the merchant's rule instead of adding another, and drops copies`() = runTest {
+        val merchantId = captureFoodieFruitie().transaction.merchantId!!
+        val diningOut = DefaultData.categoryId("Food/Dining out")
+        importOk(
+            repo.exportToml() + """
+
+                [[rule]]
+                merchant = "Tim Hortons|Second Cup"
+                category = "Food/Coffee"
+
+                [[rule]]
+                merchant = "FOODIE FRUITIE"
+                category = "Food/Groceries"
+                ask = true
+
+                [[rule]]
+                merchant = "foodie-fruitie"
+                category = "Food/Groceries"
+            """.trimIndent(),
+        )
+
+        repo.alwaysCategorize(merchantId, "Foodie Fruitie", diningOut, maxAmountCents = null, applyToPast = false)
+
+        val active = db.ruleDao().getActive()
+        assertEquals(listOf("Foodie Fruitie", "Tim Hortons|Second Cup"), active.map { it.merchantPattern })
+        val rule = active.first()
+        assertEquals(diningOut, rule.categoryId)
+        assertFalse(rule.ask)
+    }
+
+    @Test
     fun `categories missing from the file are deleted, others keep their ids`() = runTest {
         importOk(
             """
