@@ -1,0 +1,14 @@
+# Only gradle files, core/ and server/ go into the server image.
+.git
+.gradle
+.kotlin
+.idea
+.vscode
+**/build
+app
+docs
+backups
+local.properties
+.env
+.env.*
+!.env.example

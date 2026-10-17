@@ -37,3 +37,7 @@ captures/
 *.keystore
 *.jks
 !gradle/wrapper/gradle-wrapper.jar
+
+# Server deployment
+.env.production
+backups/

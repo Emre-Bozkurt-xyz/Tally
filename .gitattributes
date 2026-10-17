@@ -1,0 +1,5 @@
+# Shell scripts run in Linux containers and on the mini-PC: always LF, even on Windows checkouts.
+gradlew text eol=lf
+*.sh text eol=lf
+# Windows batch files want CRLF.
+*.bat text eol=crlf

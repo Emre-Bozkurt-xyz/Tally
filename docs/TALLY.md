@@ -18,7 +18,8 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase 2: auto capture | Wired end to end: notification → parse → match the wallet/RBC pair → merchant cleanup → memory categorization → capture notification (Change / Ignore / tap to confirm). Parsers know 2 shapes so far (RBC chequing withdrawal, Google Wallet purchase); more as fixtures arrive. Not yet run on a real purchase after wiring. |
 | Phase 3: rules and inbox | Built: rules engine + TOML file (own parser, errors by line), rules / TOML / aliases screens, review inbox with swipe actions and "always do this", transaction detail with tags and splits. Installed; the "done when" check needs a few weeks of real use. |
 | Phase 6: budgets and insights | Built: budgets (categories dialog; month view and widget with 80% / 100% colors), Stats (6-month chart, net per month, top merchants), Subscriptions (detected), Owed to me (settle / undo). |
-| Phase 4 and 5 | Not started. Phase 4 waits for the home server details; Phase 5 for a real RBC CSV. |
+| Phase 4: server | Step 1 built: `server/` (Ktor, Postgres, Flyway, Cloudflare Access JWT check), Dockerfile, production compose, deploy/backup scripts, GitHub workflow, `docs/DEPLOYMENT.md`. Image built and run locally against Postgres (health, migrations, 401 without Access). Waiting on the mini-PC / VPS / Cloudflare setup, then sync, LLM, dashboard. |
+| Phase 5 | Not started; needs a real RBC CSV. |
 
 What's verified so far:
 - `./gradlew :core:test`: 119 tests passing (budgets, trends, subscriptions, amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures, merchant cleanup, dedupe, categorizer, rules engine, rules TOML, splits).
@@ -77,12 +78,12 @@ Versions are pinned in `gradle/libs.versions.toml`.
 | Concern | Choice | Notes |
 | --- | --- | --- |
 | Framework | Ktor (Netty) | Same language, reuses `core` directly |
-| DB | SQLite via Exposed | One user, one file, trivial backups |
+| DB | Postgres 17 (own container), Flyway migrations, plain JDBC + HikariCP | Chosen over SQLite to match Vault/Mosaic ops (pg_dump backups, pg_isready). Exposed skipped for now (1.x renamed its API; the step 1 server needs only a health query) |
 | Web UI | Server-rendered kotlinx.html + HTMX + Chart.js | One deployable, no JS build step. Swap to a SPA only if it starts hurting |
-| Auth | Single long random bearer token + HTTPS | Optionally only reachable over Tailscale |
+| Auth | Cloudflare Access app on the domain: browser via your Access login, phone via an Access service token. The server verifies the `Cf-Access-Jwt-Assertion` JWT (team keys, AUD) on everything but `/healthz` | Replaces the bearer token; also blocks requests that skip Cloudflare and hit the VPS directly |
 | LLM | Anthropic API, `claude-haiku-5-5` | One call per unseen merchant, result cached |
-| Deploy | Docker container on the home server, behind the existing reverse proxy | e.g. `spend.ems-place.com` |
-| Backups | Nightly `sqlite3 .backup` to wherever Vault backups go | |
+| Deploy | `tally.ems-place.com`: Cloudflare -> VPS Caddy -> FRP -> mini-PC `127.0.0.1:18310`. Self-hosted runner `[minipc, tally, prod]`, `scripts/deploy.sh` (same shape as Vault's) | See `docs/DEPLOYMENT.md` |
+| Backups | `scripts/backup-db.sh` (pg_dump, keeps 30) from cron, copied wherever Vault backups go | |
 
 ### Tooling
 
@@ -146,9 +147,11 @@ tally/
     src/main/res/xml/           # file_paths.xml (FileProvider), data_extraction_rules.xml
     src/test/kotlin/...         # Robolectric: RawEventRepositoryTest, ExtrasJsonTest
     schemas/                    # Room schema JSON, committed
-  server/                       # later: Ktor (Phase 4)
-    src/main/kotlin/tally/server/
-    Dockerfile
+  server/                       # Ktor: ServerConfig, AccessAuth, Database (Flyway), Application routes
+    src/main/resources/db/migration/   # Flyway SQL
+  Dockerfile, docker-compose.production.yml, .env.example
+  scripts/                      # deploy.sh, backup-db.sh, restore-db.sh
+  .github/workflows/deploy.yml  # tests on GitHub, deploy on the mini-PC runner
 ```
 
 `core` is a plain `kotlin("jvm")` module. The Android app depends on it with `implementation(project(":core"))`.
@@ -575,11 +578,11 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 **Goal:** data backed up off-phone, big-screen dashboard and rule editing, LLM handles unknown merchants.
 
 **Server**
-- [ ] `server` module: Ktor + Exposed + SQLite, depends on `core`.
+- [x] `server` module: Ktor 3.6 + Postgres (HikariCP, Flyway on startup), depends on `core`. `/healthz` (open), `/api/health` (DB), `/api/me` (who Access says you are), `/` placeholder page.
 - [ ] Tables mirror the syncable Room entities (same UUIDs, same `updatedAt` / `deleted` columns). Raw events sync too (useful for re-parsing on the server later and for backups).
-- [ ] Auth: `Authorization: Bearer <token>` checked by a Ktor plugin. Token generated once, stored in server env and in the app's DataStore.
-- [ ] Dockerfile (multi-stage: Gradle build, then a JRE base image). Volume for the SQLite file. Deploy behind the existing reverse proxy with HTTPS.
-- [ ] Nightly backup job.
+- [x] Auth: Cloudflare Access JWT checked by Ktor's JWT auth against the team's certs (`AccessAuthTest` signs real RS256 tokens: valid user, service token, wrong audience, foreign signature, expired). Phone: service token id/secret in the app's settings (step 2).
+- [x] Dockerfile (Gradle on temurin 25 with `TALLY_SKIP_ANDROID=true`, then temurin 21 JRE alpine, non-root). Postgres volume `tally_postgres`. `.gitattributes` forces LF on `gradlew` and `*.sh` (CRLF broke the image build on Windows checkouts).
+- [x] Nightly backup job: script + cron line in `docs/DEPLOYMENT.md` (cron itself is set up on the mini-PC).
 
 **Sync protocol** (single user, simple on purpose)
 - [ ] `POST /sync` with `{ deviceId, since: serverCursor, changes: [ {table, row} ... ] }`.

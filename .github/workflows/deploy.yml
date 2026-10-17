@@ -1,0 +1,53 @@
+name: Deploy Tally server
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "core/**"
+      - "server/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - "Dockerfile"
+      - "docker-compose.production.yml"
+      - "scripts/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: tally-prod
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: core + server tests
+    runs-on: ubuntu-latest
+    env:
+      TALLY_SKIP_ANDROID: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Test
+        run: ./gradlew --no-daemon :core:test :server:test
+
+  deploy:
+    name: Deploy on mini-PC
+    needs: test
+    runs-on: [self-hosted, minipc, tally, prod]
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - name: Update server repo
+        run: |
+          set -euo pipefail
+          cd /opt/apps/tally/repo
+          git fetch origin main
+          git reset --hard origin/main
+          chmod +x scripts/*.sh
+      - name: Deploy
+        run: bash /opt/apps/tally/repo/scripts/deploy.sh

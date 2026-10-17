@@ -1,0 +1,95 @@
+package tally.server
+
+import com.auth0.jwk.JwkProvider
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.Application
+import io.ktor.server.application.install
+import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.authenticate
+import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.path
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
+import kotlinx.serialization.Serializable
+import org.slf4j.event.Level
+
+@Serializable
+data class HealthResponse(val ok: Boolean, val service: String, val database: String)
+
+@Serializable
+data class MeResponse(val name: String, val kind: String)
+
+/**
+ * The HTTP surface. [access] null means local dev without Cloudflare (ACCESS_DISABLED=true);
+ * [jwks] is swappable for tests.
+ */
+fun Application.tallyModule(access: AccessConfig?, database: DatabaseCheck, jwks: JwkProvider? = null) {
+    install(ContentNegotiation) { json() }
+    install(CallLogging) {
+        level = Level.INFO
+        filter { it.request.path() != "/healthz" }
+    }
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            call.application.environment.log.error("Unhandled error", cause)
+            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "internal error"))
+        }
+    }
+    if (access != null) {
+        install(Authentication) {
+            if (jwks != null) cloudflareAccess(access, jwks) else cloudflareAccess(access)
+        }
+    } else {
+        environment.log.warn("ACCESS_DISABLED=true: no authentication. Never use this in production.")
+    }
+
+    routing {
+        // Liveness for Docker and the deploy script, which call it on the mini-PC directly. Says
+        // nothing about your data, so it needs no login.
+        get("/healthz") { call.respondText("ok") }
+
+        protectedBy(access) {
+            get("/api/health") {
+                val up = database.isUp()
+                call.respond(
+                    if (up) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable,
+                    HealthResponse(ok = up, service = "tally", database = if (up) "ok" else "unreachable"),
+                )
+            }
+            get("/api/me") {
+                val caller = call.caller()
+                call.respond(MeResponse(caller.name, caller.kind.name))
+            }
+            get("/") {
+                val caller = call.caller()
+                call.respondText(
+                    """
+                    <!doctype html>
+                    <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+                    <title>Tally</title></head>
+                    <body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem">
+                    <h1>Tally</h1>
+                    <p>The server is up and you're signed in as <strong>${caller.name.escapeHtml()}</strong>.</p>
+                    <p>The dashboard arrives later in Phase 4.</p>
+                    </body></html>
+                    """.trimIndent(),
+                    ContentType.Text.Html,
+                )
+            }
+        }
+    }
+}
+
+private fun Route.protectedBy(access: AccessConfig?, build: Route.() -> Unit) {
+    if (access != null) authenticate(ACCESS_AUTH, build = build) else build()
+}
+
+private fun String.escapeHtml() =
+    replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

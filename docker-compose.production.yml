@@ -1,0 +1,52 @@
+name: tally
+
+services:
+  server:
+    build: .
+    container_name: tally-server
+    restart: unless-stopped
+    env_file:
+      - path: .env.production
+        required: false
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/tally
+      DATABASE_USER: tally
+    ports:
+      # Loopback only on the mini-PC. Public traffic arrives through FRP + VPS Caddy + Cloudflare Access.
+      - "127.0.0.1:18310:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tally_internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: tally-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tally
+      POSTGRES_USER: tally
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - tally_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tally -d tally"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tally_internal
+
+volumes:
+  tally_postgres:
+
+networks:
+  tally_internal:
+    driver: bridge
