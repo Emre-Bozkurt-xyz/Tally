@@ -1,6 +1,9 @@
 package tally.app.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import tally.core.capture.WatchedPackages
+import tally.core.model.ParseStatus
 import tally.core.entry.CategoryRanking
 import tally.core.entry.CategoryUse
 import tally.core.model.CategorySource
@@ -30,6 +33,19 @@ class LedgerRepository(
     fun observeAllAccounts(): Flow<List<AccountEntity>> = db.accountDao().observeAll()
 
     fun observeTransactions(): Flow<List<TransactionEntity>> = transactions.observeActive()
+
+    fun observeNeedsReview(): Flow<List<TransactionEntity>> = transactions.observeNeedsReview()
+
+    /** Bank and wallet notifications Tally couldn't read (say, RBC changed its wording). */
+    fun observeUnreadNotifications(): Flow<List<RawEventEntity>> = db.rawEventDao().observeFailed(WatchedPackages.ALL)
+
+    /** How many things wait in the inbox. */
+    fun observeInboxCount(): Flow<Int> =
+        combine(observeNeedsReview(), observeUnreadNotifications()) { review, unread -> review.size + unread.size }
+
+    /** "Seen it": drops an unreadable notification from the inbox (and from re-parse). */
+    suspend fun dismissUnreadNotification(rawEventId: String) =
+        db.rawEventDao().markParsed(rawEventId, ParseStatus.IGNORED.name, null)
 
     /** Including deleted ones, for labelling old transactions. */
     fun observeAllMerchants(): Flow<List<MerchantEntity>> = db.merchantDao().observeAll()

@@ -35,6 +35,10 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE NOT deleted ORDER BY occurredAt DESC")
     fun observeActive(): Flow<List<TransactionEntity>>
 
+    /** Captures you haven't confirmed yet: the inbox. */
+    @Query("SELECT * FROM transactions WHERE NOT deleted AND status = 'CAPTURED' ORDER BY occurredAt DESC")
+    fun observeNeedsReview(): Flow<List<TransactionEntity>>
+
     @Query("SELECT * FROM transactions WHERE NOT deleted AND occurredAt >= :since")
     suspend fun getActiveSince(since: Long): List<TransactionEntity>
 

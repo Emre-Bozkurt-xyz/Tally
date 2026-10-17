@@ -79,7 +79,7 @@ class QuickAddWidget : GlanceAppWidget() {
         /** Redraws the widget whenever transactions or categories change. Runs for the app's lifetime. */
         @OptIn(FlowPreview::class)
         suspend fun refreshOnChanges(context: Context, ledger: LedgerRepository) {
-            merge(ledger.observeTransactions(), ledger.observeCategories())
+            merge(ledger.observeTransactions(), ledger.observeCategories(), ledger.observeInboxCount())
                 .debounce(500)
                 .collect {
                     try {
@@ -93,7 +93,7 @@ class QuickAddWidget : GlanceAppWidget() {
         }
     }
 
-    private data class WidgetData(val week: WeekSpend, val categories: List<CategoryEntity>) {
+    private data class WidgetData(val week: WeekSpend, val categories: List<CategoryEntity>, val toReview: Int) {
         companion object {
             suspend fun load(ledger: LedgerRepository): WidgetData {
                 val today = LocalDate.now()
@@ -111,7 +111,7 @@ class QuickAddWidget : GlanceAppWidget() {
                     monthlyBudgetsCents = categories.filter { it.parentId == null }.mapNotNull { it.monthlyBudgetCents },
                 )
                 val pinned = categories.chipCategories().filter { it.pinned }.take(MAX_CATEGORIES)
-                return WidgetData(week, pinned)
+                return WidgetData(week, pinned, ledger.observeInboxCount().first())
             }
         }
     }
@@ -125,7 +125,7 @@ class QuickAddWidget : GlanceAppWidget() {
                 .cornerRadius(20.dp)
                 .padding(12.dp),
         ) {
-            Header(context, data.week)
+            Header(context, data.week, data.toReview)
             Spacer(GlanceModifier.height(8.dp))
             if (data.categories.isEmpty()) {
                 Text(
@@ -152,7 +152,7 @@ class QuickAddWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun Header(context: Context, week: WeekSpend) {
+    private fun Header(context: Context, week: WeekSpend, toReview: Int) {
         Column(modifier = GlanceModifier.fillMaxWidth()) {
             Row(
                 modifier = GlanceModifier.fillMaxWidth(),
@@ -164,8 +164,11 @@ class QuickAddWidget : GlanceAppWidget() {
                         .clickable(actionStartActivity(Intent(context, MainActivity::class.java))),
                 ) {
                     Text(
-                        "This week",
-                        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp),
+                        if (toReview > 0) "This week · $toReview to review" else "This week",
+                        style = TextStyle(
+                            color = if (toReview > 0) GlanceTheme.colors.primary else GlanceTheme.colors.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        ),
                     )
                     val budget = week.budgetCents?.let { " of ${Money.format(it)}" }.orEmpty()
                     Text(

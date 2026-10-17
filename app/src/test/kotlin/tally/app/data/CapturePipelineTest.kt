@@ -144,6 +144,21 @@ class CapturePipelineTest {
     }
 
     @Test
+    fun `inbox holds unconfirmed captures and unreadable notifications`() = runTest {
+        val captured = wallet(t0).captured().transaction
+        post(WatchedPackages.RBC, "RBC Mobile", "Your statement is ready.", t0.plusSeconds(60))
+        assertEquals(2, ledger.observeInboxCount().first())
+
+        val unread = ledger.observeUnreadNotifications().first().single()
+        ledger.dismissUnreadNotification(unread.id)
+        assertEquals(1, ledger.observeInboxCount().first())
+        assertTrue(pipeline.reparseUnlinked().isEmpty()) // Dismissed ones aren't retried.
+
+        ledger.saveQuickEntry(captured, captured.amountCents, groceries, captured.accountId, null)
+        assertEquals(0, ledger.observeInboxCount().first())
+    }
+
+    @Test
     fun `two purchases from the same wallet stay separate`() = runTest {
         wallet(t0)
         wallet(t0.plus(Duration.ofMinutes(2)))

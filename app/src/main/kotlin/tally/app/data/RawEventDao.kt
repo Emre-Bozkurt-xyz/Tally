@@ -19,6 +19,10 @@ interface RawEventDao {
     @Query("SELECT * FROM raw_events ORDER BY receivedAt ASC")
     suspend fun getAll(): List<RawEventEntity>
 
+    /** Bank and wallet notifications no parser understood: inbox flags. */
+    @Query("SELECT * FROM raw_events WHERE parseStatus = 'FAILED' AND source IN (:sources) ORDER BY postedAt DESC")
+    fun observeFailed(sources: Set<String>): Flow<List<RawEventEntity>>
+
     @Query("UPDATE raw_events SET parseStatus = :status, transactionId = :transactionId WHERE id = :id")
     suspend fun markParsed(id: String, status: String, transactionId: String?)
 

@@ -7,6 +7,7 @@ import androidx.navigation.compose.rememberNavController
 import tally.app.AppContainer
 import tally.app.data.CapturePipeline
 import tally.app.ui.categories.CategoriesScreen
+import tally.app.ui.inbox.InboxScreen
 import tally.app.ui.ledger.LedgerScreen
 import tally.app.ui.ledger.MonthScreen
 import tally.app.ui.rawevents.RawEventDetailScreen
@@ -16,6 +17,7 @@ import tally.core.model.ParseStatus
 
 private object Routes {
     const val LEDGER = "ledger"
+    const val INBOX = "inbox"
     const val MONTH = "month"
     const val CATEGORIES = "categories"
     const val RAW_EVENTS = "raw-events"
@@ -33,9 +35,18 @@ fun TallyNavHost(container: AppContainer) {
             LedgerScreen(
                 ledger = container.ledger,
                 onOpenMonth = { nav.navigate(Routes.MONTH) },
+                onOpenInbox = { nav.navigate(Routes.INBOX) },
                 onOpenCategories = { nav.navigate(Routes.CATEGORIES) },
                 onOpenSetup = { nav.navigate(Routes.SETUP) },
                 onOpenRawEvents = { nav.navigate(Routes.RAW_EVENTS) },
+            )
+        }
+        composable(Routes.INBOX) {
+            InboxScreen(
+                ledger = container.ledger,
+                rules = container.rules,
+                onOpenRawEvent = { nav.navigate(Routes.rawEvent(it)) },
+                onBack = { nav.popBackStack() },
             )
         }
         composable(Routes.MONTH) {

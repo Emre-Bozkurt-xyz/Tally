@@ -17,6 +17,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,6 +70,7 @@ private val TIME_FORMAT = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 fun LedgerScreen(
     ledger: LedgerRepository,
     onOpenMonth: () -> Unit,
+    onOpenInbox: () -> Unit,
     onOpenCategories: () -> Unit,
     onOpenSetup: () -> Unit,
     onOpenRawEvents: () -> Unit,
@@ -89,6 +93,7 @@ fun LedgerScreen(
     // The list is newest first and groupBy keeps first-seen order, so days stay newest first.
     val days = remember(transactions) { transactions.orEmpty().groupBy { it.occurredAtLocal().toLocalDate() } }
     val today = LocalDate.now()
+    val inboxCount by remember { ledger.observeInboxCount() }.collectAsStateWithLifecycle(initialValue = 0)
 
     fun delete(transaction: TransactionEntity, label: String) {
         scope.launch {
@@ -108,6 +113,11 @@ fun LedgerScreen(
             TopAppBar(
                 title = { Text("Tally") },
                 actions = {
+                    IconButton(onClick = onOpenInbox) {
+                        BadgedBox(badge = { if (inboxCount > 0) Badge { Text("$inboxCount") } }) {
+                            Icon(Icons.Default.Notifications, contentDescription = "Inbox, $inboxCount to review")
+                        }
+                    }
                     IconButton(onClick = onOpenMonth) {
                         Icon(Icons.Default.DateRange, contentDescription = "Month view")
                     }
