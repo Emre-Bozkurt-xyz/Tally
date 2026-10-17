@@ -71,6 +71,14 @@ class PostgresSyncStore(private val dataSource: DataSource) : SyncStore {
         }
     }
 
+    // MAX over the rows, not the sequence: skipped upserts draw numbers too, and they mustn't
+    // look like changes.
+    override fun latestSeq(): Long = dataSource.connection.use { connection ->
+        connection.createStatement().use { statement ->
+            statement.executeQuery("SELECT COALESCE(MAX(server_seq), 0) FROM sync_rows").use { rs -> rs.next(); rs.getLong(1) }
+        }
+    }
+
     private fun ResultSet.toChange() = SyncChange(
         table = getString("table_name"),
         id = getString("id"),

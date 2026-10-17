@@ -158,6 +158,15 @@ class AccessAuthTest {
     }
 
     @Test
+    fun `the event stream needs access and frames events as sse`() = app {
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/api/events").status)
+        assertEquals(
+            "event: sync\ndata: {\"cursor\":7,\"source\":\"web-abc\"}\n\n",
+            tally.core.sync.SyncEvent(7, "web-abc").toSse(),
+        )
+    }
+
+    @Test
     fun `readiness reports the database`() {
         app(databaseUp = true) {
             assertEquals(HttpStatusCode.OK, client.get("/api/health") { header(ACCESS_JWT_HEADER, token()) }.status)

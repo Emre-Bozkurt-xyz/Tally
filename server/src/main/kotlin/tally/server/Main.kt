@@ -14,7 +14,9 @@ fun main() {
         val categorize = config.llm?.let {
             CategorizeService(PostgresCategoryCache(database.dataSource, it.model), AnthropicModel(it.apiKey, it.model), it.dailyLimit)
         }
-        tallyModule(config.access, database, SyncServer(PostgresSyncStore(database.dataSource)), categorize = categorize)
+        val events = SyncEvents()
+        val sync = SyncServer(PostgresSyncStore(database.dataSource), onChange = events::publish)
+        tallyModule(config.access, database, sync, categorize = categorize, events = events)
         monitor.subscribe(ApplicationStopped) { database.close() }
     }.start(wait = true)
 }

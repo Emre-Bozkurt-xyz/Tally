@@ -20,10 +20,14 @@ import java.util.UUID
  * mirror what the same action does on the phone (LedgerRepository, RulesRepository).
  */
 class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.systemUTC()) {
+    companion object {
+        const val WEB = "web"
+    }
+
     fun snapshot() = Snapshot.load(sync)
 
     /** You picked a category (ledger or inbox): confirmed, manual, and merchant memory learns. */
-    fun setCategory(transactionId: String, categoryId: String): Boolean {
+    fun setCategory(transactionId: String, categoryId: String, source: String = WEB): Boolean {
         val s = snapshot()
         val t = s.transactions.find { it.id == transactionId } ?: return false
         if (s.categoryTree.none { it.id == categoryId }) return false
@@ -43,12 +47,12 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
         if (t.status == TransactionStatus.CAPTURED.name || t.categoryId != categoryId) {
             learn(s, t.merchantId, categoryId, now)?.let { writes += it }
         }
-        sync.write(writes)
+        sync.write(writes, source)
         return true
     }
 
     /** Accept a capture's suggested category as is. */
-    fun confirm(transactionId: String): Boolean {
+    fun confirm(transactionId: String, source: String = WEB): Boolean {
         val s = snapshot()
         val t = s.needsReview.find { it.id == transactionId } ?: return false
         val categoryId = t.categoryId ?: return false
@@ -61,15 +65,16 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
                 ),
                 learn(s, t.merchantId, categoryId, now),
             ),
+            source,
         )
         return true
     }
 
     /** "Not a purchase": deleted, as the notification's Ignore does. */
-    fun ignore(transactionId: String): Boolean {
+    fun ignore(transactionId: String, source: String = WEB): Boolean {
         val s = snapshot()
         val t = s.transactions.find { it.id == transactionId } ?: return false
-        sync.write(listOf(Rows.transactions.encode(t.copy(deleted = true, updatedAt = clock.millis()), s.stored(Rows.transactions.table, t.id))))
+        sync.write(listOf(Rows.transactions.encode(t.copy(deleted = true, updatedAt = clock.millis()), s.stored(Rows.transactions.table, t.id))), source)
         return true
     }
 
@@ -111,7 +116,7 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
      * aliases and rules in file order, reusing identical rows. The phone re-applies aliases to
      * old transactions when it pulls the change.
      */
-    fun importToml(text: String): TomlImport {
+    fun importToml(text: String, source: String = WEB): TomlImport {
         val s = snapshot()
         val result = RulesToml.import(text, s.accounts.map { it.name }.toSet())
         if (result !is TomlImport.Ok) return result
@@ -167,7 +172,7 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
         }
         oldRules.forEach { writes += Rows.rules.encode(it.copy(deleted = true, updatedAt = now), s.stored(Rows.rules.table, it.id)) }
 
-        sync.write(writes)
+        sync.write(writes, source)
         return result
     }
 }

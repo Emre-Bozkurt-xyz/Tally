@@ -51,6 +51,8 @@ fun Application.tallyModule(
     categorize: CategorizeService? = null,
     zone: ZoneId = ZoneId.of("America/Toronto"),
     clock: Clock = Clock.systemUTC(),
+    /** Must be the hub [sync] announces to (see Main), or the stream stays silent. */
+    events: SyncEvents = SyncEvents(),
 ) {
     install(ContentNegotiation) { json() }
     install(CallLogging) {
@@ -110,6 +112,7 @@ fun Application.tallyModule(
                 }
                 call.respond(withContext(Dispatchers.IO) { categorize.categorize(request) })
             }
+            syncEvents(events)
             get("/api/me") {
                 val caller = call.caller()
                 call.respond(MeResponse(caller.name, caller.kind.name))

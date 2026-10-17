@@ -172,8 +172,9 @@ fun SyncScreen(sync: SyncManager, onBack: () -> Unit) {
                 )
             }
             Text(
-                "Syncs hourly, when you open Tally, and ${SyncManager.CHANGE_DELAY_SECONDS} seconds " +
-                    "after changes, whenever there's a network.",
+                "Syncs ${SyncManager.CHANGE_DELAY_SECONDS} seconds after changes, right away when " +
+                    "the dashboard or another device changes something while Tally is open, " +
+                    "and hourly in the background.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

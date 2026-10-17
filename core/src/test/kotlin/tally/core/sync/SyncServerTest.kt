@@ -12,7 +12,8 @@ import java.time.ZoneOffset
 
 class SyncServerTest {
     private val now = Instant.parse("2026-10-17T12:00:00Z")
-    private val server = SyncServer(InMemorySyncStore(), Clock.fixed(now, ZoneOffset.UTC))
+    private val events = mutableListOf<SyncEvent>()
+    private val server = SyncServer(InMemorySyncStore(), Clock.fixed(now, ZoneOffset.UTC)) { events += it }
     private val t = now.toEpochMilli()
 
     private fun row(id: String, updatedAt: Long, note: String = "x", table: String = "transactions", deleted: Boolean = false) =
@@ -60,6 +61,18 @@ class SyncServerTest {
         val response = sync(0, row("a", t + SyncProtocol.MAX_FUTURE_SKEW_MS + 1), row("b", t, table = "secrets"))
         assertEquals(listOf("transactions/a", "secrets/b"), response.rejected)
         assertTrue(response.changes.isEmpty())
+    }
+
+    @Test
+    fun `changes are announced with their writer, echoes and losers are not`() {
+        sync(0, row("a", t - 10))
+        assertEquals(listOf(SyncEvent(1, "phone")), events)
+        sync(1, row("a", t - 10)) // echo
+        sync(1, row("a", t - 20)) // older: loses
+        sync(1)                   // pull only
+        assertEquals(1, events.size)
+        server.write(listOf(row("a", t - 1)), source = "web-1")
+        assertEquals(SyncEvent(2, "web-1"), events.last())
     }
 
     @Test

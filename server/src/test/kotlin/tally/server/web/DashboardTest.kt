@@ -27,7 +27,8 @@ class DashboardTest {
     private val zone = ZoneId.of("America/Toronto")
     private val now = Instant.parse("2026-10-17T16:00:00Z")
     private val clock = Clock.fixed(now, zone)
-    private val sync = SyncServer(InMemorySyncStore(), clock)
+    private val events = mutableListOf<tally.core.sync.SyncEvent>()
+    private val sync = SyncServer(InMemorySyncStore(), clock) { events += it }
     private val edits = WebEdits(sync, clock)
 
     private val food = CategoryRow("food", "Food", null, 400_00, 0, false, 0)
@@ -69,6 +70,7 @@ class DashboardTest {
     private suspend fun ApplicationTestBuilder.edit(path: String, vararg form: Pair<String, String>, htmx: Boolean = true) =
         client.post(path) {
             if (htmx) header("HX-Request", "true")
+            header("X-Tally-Source", "web-page1")
             setBody(FormDataContent(Parameters.build { form.forEach { (k, v) -> append(k, v) } }))
         }
 
@@ -77,6 +79,8 @@ class DashboardTest {
     @Test
     fun `overview shows the month by category, with budget and charts`() = app {
         val html = client.get("/").bodyAsText()
+        assertTrue("data-live=\"auto\"" in html && "new EventSource('/api/events')" in html)
+        assertTrue("data-live=\"banner\"" in client.get("/rules").bodyAsText())
         assertTrue("October 2026" in html)
         assertTrue("\$38.57" in html, "spent this month") // 4.25 + 34.32
         assertTrue("\$361.43 left" in html, "food budget 400 minus spending")
@@ -110,10 +114,14 @@ class DashboardTest {
         assertEquals(now.toEpochMilli(), t.updatedAt)
         val memory = edits.snapshot().merchantsById.getValue("m-fruitie")
         assertEquals("coffee" to 1, memory.lastCategoryId to memory.confirmCount)
+        // Announced as this page's edit, so the page itself doesn't reload.
+        assertEquals("web-page1", events.last().source)
+        val count = events.size
 
         // An unknown category id changes nothing.
         edit("/ledger/t-coffee/category", "categoryId" to "nope")
         assertEquals("coffee", stored("t-coffee").categoryId)
+        assertEquals(count, events.size, "nothing stored, nothing announced")
     }
 
     @Test

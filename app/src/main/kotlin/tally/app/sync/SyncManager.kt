@@ -15,7 +15,9 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import tally.app.appContainer
@@ -97,6 +99,39 @@ class SyncManager(
         0
     }
 
+    /**
+     * While Tally is open: follows the server's event stream and syncs as soon as another
+     * device or the dashboard changes something. Reconnects with backoff; returns only when
+     * cancelled. Not run in the background: an always-open connection would keep the radio
+     * awake all day, so there the hourly sync and the sync on opening cover it.
+     */
+    suspend fun followServer() {
+        var backoffMs = MIN_BACKOFF_MS
+        var reconnecting = false
+        while (true) {
+            settings.server.first { it.isComplete }
+            val me = settings.deviceId()
+            // Whatever changed while the stream was down.
+            if (reconnecting) syncNow()
+            try {
+                transport.events { event ->
+                    backoffMs = MIN_BACKOFF_MS
+                    if (event.source != me) syncNow()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: SyncAuthException) {
+                Log.w(TAG, "Live sync: ${e.message}")
+                backoffMs = MAX_BACKOFF_MS
+            } catch (e: Exception) {
+                Log.d(TAG, "Live sync dropped: ${e.message}")
+            }
+            reconnecting = true
+            delay(backoffMs)
+            backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+        }
+    }
+
     /** Queues a sync for when there's a network, after [delaySeconds]. */
     suspend fun requestSync(delaySeconds: Long = 0) {
         if (!settings.currentServer().isComplete) return
@@ -139,7 +174,10 @@ class SyncManager(
         private const val TAG = "TallySync"
         private const val SOON = "sync-soon"
         private const val PERIODIC = "sync-periodic"
-        const val CHANGE_DELAY_SECONDS = 30L
+        /** Long enough to batch a burst (a capture writes several rows), short enough to feel live. */
+        const val CHANGE_DELAY_SECONDS = 3L
+        private const val MIN_BACKOFF_MS = 5_000L
+        private const val MAX_BACKOFF_MS = 5 * 60_000L
     }
 }
 

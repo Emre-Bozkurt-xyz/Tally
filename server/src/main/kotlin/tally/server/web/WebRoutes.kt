@@ -56,26 +56,26 @@ fun Route.dashboard(edits: WebEdits, zone: ZoneId, clock: Clock) {
 
     edit("/ledger/{id}/category") { id ->
         val categoryId = receiveParameters()["categoryId"].orEmpty()
-        withContext(Dispatchers.IO) { edits.setCategory(id, categoryId) }
+        withContext(Dispatchers.IO) { edits.setCategory(id, categoryId, source()) }
         val s = snapshot()
         val t = s.transactions.find { it.id == id } ?: return@edit html("")
         html(ledgerRowHtml(s, t))
     }
 
     edit("/inbox/{id}/confirm") { id ->
-        val done = withContext(Dispatchers.IO) { edits.confirm(id) }
+        val done = withContext(Dispatchers.IO) { edits.confirm(id, source()) }
         html(inboxDoneHtml(if (done) "Confirmed." else "Already handled."))
     }
 
     edit("/inbox/{id}/category") { id ->
         val categoryId = receiveParameters()["categoryId"].orEmpty()
-        val done = withContext(Dispatchers.IO) { edits.setCategory(id, categoryId) }
+        val done = withContext(Dispatchers.IO) { edits.setCategory(id, categoryId, source()) }
         val s = snapshot()
         html(inboxDoneHtml(if (done) "Filed under ${s.label(categoryId)}." else "Already handled."))
     }
 
     edit("/inbox/{id}/ignore") { id ->
-        val done = withContext(Dispatchers.IO) { edits.ignore(id) }
+        val done = withContext(Dispatchers.IO) { edits.ignore(id, source()) }
         html(inboxDoneHtml(if (done) "Deleted." else "Already handled."))
     }
 
@@ -87,7 +87,7 @@ fun Route.dashboard(edits: WebEdits, zone: ZoneId, clock: Clock) {
 
     edit("/rules/save") {
         val text = receiveParameters()["toml"].orEmpty()
-        html(tomlResultHtml(withContext(Dispatchers.IO) { edits.importToml(text) }, saved = true))
+        html(tomlResultHtml(withContext(Dispatchers.IO) { edits.importToml(text, source()) }, saved = true))
     }
 }
 
@@ -105,5 +105,11 @@ private fun Route.edit(path: String, handle: suspend ApplicationCall.(id: String
         call.handle(call.parameters["id"].orEmpty())
     }
 }
+
+/** The page that sent the edit (`X-Tally-Source`, set by HTMX), so it can skip its own echo. */
+private fun ApplicationCall.source(): String =
+    request.headers["X-Tally-Source"]?.takeIf { it.matches(SOURCE) } ?: WebEdits.WEB
+
+private val SOURCE = Regex("web-[A-Za-z0-9]{1,32}")
 
 private suspend fun ApplicationCall.html(fragment: String) = respondText(fragment, ContentType.Text.Html)

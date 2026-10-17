@@ -2,6 +2,8 @@ package tally.app.data
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import tally.core.normalize.MerchantNormalizer
 import tally.core.capture.WatchedPackages
 import tally.core.model.ParseStatus
 import tally.core.entry.CategoryRanking
@@ -146,6 +148,11 @@ class LedgerRepository(
     /**
      * Saves a quick entry. With [existing], updates its amount, category, account and note and
      * marks it confirmed; otherwise creates a manual expense happening now.
+     *
+     * [merchantName] is what you typed for a manual entry: null keeps the merchant as it is,
+     * blank removes it. It goes through your aliases like a captured name, so "tims" can land
+     * on the same merchant as the card captures. A capture's merchant always stays the one
+     * the notification named.
      */
     suspend fun saveQuickEntry(
         existing: TransactionEntity?,
@@ -153,8 +160,12 @@ class LedgerRepository(
         categoryId: String,
         accountId: String?,
         note: String?,
+        merchantName: String? = null,
     ): TransactionEntity {
         val now = clock.millis()
+        val manual = existing == null || existing.source == Source.MANUAL.name
+        val typed = merchantName?.trim()?.takeIf { manual }
+        val merchant = typed?.takeIf { it.isNotEmpty() }?.let { merchantFor(it, now) }
         val transaction = existing?.copy(
             amountCents = amountCents,
             categoryId = categoryId,
@@ -163,15 +174,16 @@ class LedgerRepository(
             status = TransactionStatus.CONFIRMED.name,
             categorySource = CategorySource.MANUAL.name,
             updatedAt = now,
-        ) ?: TransactionEntity(
+        )?.let { if (typed == null) it else it.copy(merchantId = merchant?.id, merchantRaw = merchant?.let { typed }) }
+            ?: TransactionEntity(
             id = UUID.randomUUID().toString(),
             amountCents = amountCents,
             currency = CURRENCY,
             occurredAt = now,
             zoneId = clock.zone.id,
             accountId = accountId,
-            merchantId = null,
-            merchantRaw = null,
+            merchantId = merchant?.id,
+            merchantRaw = merchant?.let { typed },
             categoryId = categoryId,
             note = note,
             source = Source.MANUAL.name,
@@ -181,14 +193,30 @@ class LedgerRepository(
             updatedAt = now,
         )
         transactions.upsert(transaction)
-        if (existing != null) {
-            // Count it once per decision: confirming a capture, or changing the category.
-            if (existing.status == TransactionStatus.CAPTURED.name || existing.categoryId != categoryId) {
-                memory.confirmCategory(existing.merchantId, categoryId)
+        if (existing == null) {
+            memory.confirmCategory(transaction.merchantId, categoryId)
+        } else {
+            // Count it once per decision: confirming a capture, a new category, or a new merchant.
+            if (existing.status == TransactionStatus.CAPTURED.name || existing.categoryId != categoryId ||
+                existing.merchantId != transaction.merchantId
+            ) {
+                memory.confirmCategory(transaction.merchantId, categoryId)
             }
             if (existing.accountId != accountId) memory.learnAccount(existing.id, accountId)
         }
         return transaction
+    }
+
+    /** Known merchants for the quick entry suggestions: most confirmed first. */
+    fun observeMerchantChoices(): Flow<List<MerchantEntity>> = db.merchantDao().observeAll()
+        .map { all -> all.filter { !it.deleted }.sortedWith(compareByDescending<MerchantEntity> { it.confirmCount }.thenBy { it.name.lowercase() }) }
+
+    /** The merchant a typed name normalizes to, created if new (as a capture would). */
+    private suspend fun merchantFor(typed: String, now: Long): MerchantEntity {
+        val name = MerchantNormalizer(db.aliasDao().getActive().mapNotNull { it.toAlias() }).normalize(typed)
+        val merchants = db.merchantDao()
+        return merchants.findByName(name)
+            ?: MerchantEntity(UUID.randomUUID().toString(), name, null, 0, now).also { merchants.upsert(it) }
     }
 
     companion object {

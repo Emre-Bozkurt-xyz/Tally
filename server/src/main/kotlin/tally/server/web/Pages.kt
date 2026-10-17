@@ -76,6 +76,11 @@ fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean
         if (charts) script(src = CHART_JS) {}
     }
     body {
+        // This page's id: its HTMX edits send it back, so it can tell its own changes from others'.
+        val source = "web-" + java.util.UUID.randomUUID().toString().replace("-", "").take(12)
+        attributes["data-source"] = source
+        attributes["data-live"] = if (tab == Tab.RULES) "banner" else "auto"
+        attributes["hx-headers"] = """{"X-Tally-Source":"$source"}"""
         header {
             a(href = "/", classes = "brand") { +"Tally" }
             nav {
@@ -88,9 +93,31 @@ fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean
             }
             span("who") { +who }
         }
+        div("live-banner") {
+            attributes["hidden"] = "hidden"
+            +"Changed on another device. "
+            a(href = "") { +"Refresh" }
+        }
         main { content() }
+        script { unsafe { +LIVE_JS } }
     }
 }
+
+// Reloads when another device syncs (or shows a banner while you're typing, and on Rules).
+private const val LIVE_JS = """
+(() => {
+  const me = document.body.dataset.source, auto = document.body.dataset.live === 'auto';
+  const banner = document.querySelector('.live-banner');
+  let timer;
+  const busy = () => { const el = document.activeElement; return el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName); };
+  const events = new EventSource('/api/events');
+  events.addEventListener('sync', e => {
+    if (JSON.parse(e.data).source === me) return;
+    if (auto && !busy()) { clearTimeout(timer); timer = setTimeout(() => location.reload(), 700); }
+    else banner.hidden = false;
+  });
+})();
+"""
 
 // ---------- Overview ----------
 
@@ -468,6 +495,9 @@ nav { display:flex; gap:.25rem; flex-wrap:wrap; }
 nav a { color:var(--muted); padding:.3rem .65rem; border-radius:6px; }
 nav a.active { color:var(--fg); background:var(--tag); }
 .count { background:var(--accent); color:#fff; border-radius:9px; padding:0 .4rem; margin-left:.35rem; font-size:.8rem; }
+.live-banner { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--fg); color:var(--bg);
+                padding:.5rem 1rem; border-radius:8px; z-index:2; box-shadow:0 4px 14px rgba(0,0,0,.2); }
+.live-banner a { color:var(--bg); text-decoration:underline; }
 .who { margin-left:auto; color:var(--muted); font-size:.85rem; }
 main { max-width:1200px; margin:0 auto; padding:1.25rem 1rem 3rem; }
 h1 { font-size:1.4rem; margin:.25rem 0 1rem; }

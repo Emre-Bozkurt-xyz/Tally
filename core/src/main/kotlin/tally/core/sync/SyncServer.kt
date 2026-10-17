@@ -15,7 +15,13 @@ interface SyncStore {
 
     /** The current row of every id in [table], deleted ones included. */
     fun current(table: String): List<SyncChange>
+
+    /** The highest sequence number stored, 0 when empty. */
+    fun latestSeq(): Long
 }
+
+/** Rows were stored: everyone after [cursor] has something to pull. [source] wrote them. */
+data class SyncEvent(val cursor: Long, val source: String)
 
 data class Sequenced(val seq: Long, val change: SyncChange)
 
@@ -23,10 +29,17 @@ data class Sequenced(val seq: Long, val change: SyncChange)
  * The sync rules, shared by the real server and tests: last write wins per row, the server
  * hands back everything after the client's cursor, and rows from a clock too far in the
  * future are refused. Requests are handled one at a time so sequence numbers commit in order.
+ * [onChange] hears about every request that stored something (not echoes), so other devices
+ * and open dashboards can pull right away.
  */
-class SyncServer(private val store: SyncStore, private val clock: Clock = Clock.systemUTC()) {
+class SyncServer(
+    private val store: SyncStore,
+    private val clock: Clock = Clock.systemUTC(),
+    private val onChange: (SyncEvent) -> Unit = {},
+) {
     @Synchronized
     fun handle(request: SyncRequest): SyncResponse {
+        val before = if (request.changes.isEmpty()) null else store.latestSeq()
         val now = clock.millis()
         val rejected = mutableListOf<String>()
         val winners = mutableListOf<SyncChange>()
@@ -38,6 +51,7 @@ class SyncServer(private val store: SyncStore, private val clock: Clock = Clock.
             }
         }
 
+        before?.let { announce(it, request.deviceId) }
         val page = store.changesSince(request.since, SyncProtocol.PAGE_SIZE + 1)
         val returned = page.take(SyncProtocol.PAGE_SIZE)
         val returnedKeys = returned.map { it.change.table to it.change.id }.toSet()
@@ -55,9 +69,19 @@ class SyncServer(private val store: SyncStore, private val clock: Clock = Clock.
      * push. Returns the rows that lost to something newer already stored.
      */
     @Synchronized
-    fun write(changes: List<SyncChange>): List<SyncChange> = changes.mapNotNull { change ->
-        require(change.table in SyncProtocol.TABLES) { "unknown table ${change.table}" }
-        store.applyIfNewer(change)
+    fun write(changes: List<SyncChange>, source: String = "server"): List<SyncChange> {
+        val before = store.latestSeq()
+        val losers = changes.mapNotNull { change ->
+            require(change.table in SyncProtocol.TABLES) { "unknown table ${change.table}" }
+            store.applyIfNewer(change)
+        }
+        announce(before, source)
+        return losers
+    }
+
+    private fun announce(before: Long, source: String) {
+        val after = store.latestSeq()
+        if (after > before) onChange(SyncEvent(after, source))
     }
 
     fun current(table: String): List<SyncChange> = store.current(table)
@@ -86,4 +110,7 @@ class InMemorySyncStore : SyncStore {
     @Synchronized
     override fun current(table: String): List<SyncChange> =
         rows.values.map { it.change }.filter { it.table == table }
+
+    @Synchronized
+    override fun latestSeq(): Long = seq
 }

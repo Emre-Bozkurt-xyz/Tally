@@ -141,4 +141,29 @@ class LedgerRepositoryTest {
         assertEquals(listOf(coffee), uses.map { it.categoryId })
         assertEquals(zone, uses.single().at.zone)
     }
+
+    @Test
+    fun `a manual entry can name its merchant, which then remembers the category`() = runTest {
+        val first = ledger.saveQuickEntry(null, 425, coffee, cash, note = null, merchantName = "  Tim Hortons ")
+        val merchant = db.merchantDao().getById(first.merchantId!!)!!
+        assertEquals("Tim Hortons", merchant.name)
+        assertEquals("Tim Hortons", first.merchantRaw)
+        assertEquals(coffee to 1, merchant.lastCategoryId to merchant.confirmCount)
+
+        val second = ledger.saveQuickEntry(null, 525, coffee, cash, note = null, merchantName = "Tim Hortons")
+        assertEquals(first.merchantId, second.merchantId)
+        assertEquals(2, db.merchantDao().getById(first.merchantId!!)!!.confirmCount)
+    }
+
+    @Test
+    fun `editing keeps the merchant unless you change or clear it`() = runTest {
+        val saved = ledger.saveQuickEntry(null, 425, coffee, cash, note = null, merchantName = "Tim Hortons")
+        val kept = ledger.saveQuickEntry(saved, 450, coffee, cash, note = null)
+        assertEquals(saved.merchantId, kept.merchantId)
+
+        val cleared = ledger.saveQuickEntry(kept, 450, coffee, cash, note = null, merchantName = "")
+        assertNull(cleared.merchantId)
+        assertNull(cleared.merchantRaw)
+        assertNull(ledger.saveQuickEntry(null, 100, coffee, cash, note = null, merchantName = " ").merchantId)
+    }
 }

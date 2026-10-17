@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,11 +60,13 @@ import tally.app.data.AccountEntity
 import tally.app.data.CategoryEntity
 import tally.app.data.DefaultData
 import tally.app.data.LedgerRepository
+import tally.app.data.MerchantEntity
 import tally.app.data.TransactionEntity
 import tally.app.data.chipCategories
 import tally.core.entry.AmountEntry
 import tally.core.entry.CategoryRanking
 import tally.core.model.Money
+import tally.core.model.Source
 import java.time.ZonedDateTime
 
 /**
@@ -83,6 +87,8 @@ fun QuickEntrySheet(
     var amountCents by rememberSaveable { mutableLongStateOf(request.amountCents) }
     var note by rememberSaveable { mutableStateOf("") }
     var noteOpen by rememberSaveable { mutableStateOf(false) }
+    var merchant by rememberSaveable { mutableStateOf("") }
+    var merchantOpen by rememberSaveable { mutableStateOf(false) }
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCategoryId by rememberSaveable { mutableStateOf(request.categoryId) }
     var existing by remember { mutableStateOf<TransactionEntity?>(null) }
@@ -103,6 +109,10 @@ fun QuickEntrySheet(
             amountCents = transaction.amountCents
             note = transaction.note.orEmpty()
             noteOpen = note.isNotEmpty()
+            if (transaction.source == Source.MANUAL.name) {
+                merchant = transaction.merchantRaw.orEmpty()
+                merchantOpen = merchant.isNotEmpty()
+            }
             accountId = transaction.accountId
             selectedCategoryId = transaction.categoryId
             loaded = true
@@ -112,6 +122,8 @@ fun QuickEntrySheet(
     val categories by remember { ledger.observeCategories() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val accounts by remember { ledger.observeAccounts() }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val merchants by remember { ledger.observeMerchantChoices() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val uses by produceState(initialValue = emptyList()) { value = ledger.recentCategoryUses() }
     val chips = remember(categories, uses) {
@@ -134,6 +146,8 @@ fun QuickEntrySheet(
         }
 
     val isEdit = request.transactionId != null
+    // Captures keep the merchant their notification named; manual entries can have one typed.
+    val canTypeMerchant = !isEdit || existing?.source == Source.MANUAL.name
     val ready = amountCents > 0 && !saving && (!isEdit || existing != null)
 
     fun save(category: CategoryEntity) {
@@ -147,9 +161,11 @@ fun QuickEntrySheet(
                 categoryId = category.id,
                 accountId = account?.id,
                 note = note.trim().ifEmpty { null },
+                merchantName = if (canTypeMerchant) merchant.trim() else null,
             )
             val verb = if (isEdit) "Updated" else "Saved"
-            onFinished("$verb ${Money.format(amountCents)} · ${category.name}")
+            val at = merchant.trim().takeIf { canTypeMerchant && it.isNotEmpty() }?.let { " at $it" }.orEmpty()
+            onFinished("$verb ${Money.format(amountCents)}$at · ${category.name}")
         }
     }
 
@@ -168,8 +184,13 @@ fun QuickEntrySheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AccountPicker(account, accounts, onPick = { accountId = it.id })
                 Spacer(Modifier.weight(1f))
-                if (isEdit) {
+                if (isEdit && !canTypeMerchant) {
                     Text(existing?.merchantRaw ?: "Editing", style = MaterialTheme.typography.labelLarge)
+                }
+                if (canTypeMerchant) {
+                    IconButton(onClick = { merchantOpen = !merchantOpen }) {
+                        Icon(Icons.Default.ShoppingCart, contentDescription = "Add a merchant")
+                    }
                 }
                 IconButton(onClick = { noteOpen = !noteOpen }) {
                     Icon(Icons.Default.Edit, contentDescription = "Add a note")
@@ -187,6 +208,18 @@ fun QuickEntrySheet(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
 
+            if (merchantOpen && canTypeMerchant) {
+                MerchantField(
+                    merchant = merchant,
+                    known = merchants,
+                    onChange = { merchant = it },
+                    onPick = { picked ->
+                        merchant = picked.name
+                        // Its usual category, unless you came from a category button already.
+                        if (selectedCategoryId == null) selectedCategoryId = picked.lastCategoryId
+                    },
+                )
+            }
             if (noteOpen) NoteField(note, onChange = { note = it })
 
             Numpad(
@@ -264,6 +297,36 @@ private fun AccountPicker(
         }
     }
 }
+
+@Composable
+private fun MerchantField(
+    merchant: String,
+    known: List<MerchantEntity>,
+    onChange: (String) -> Unit,
+    onPick: (MerchantEntity) -> Unit,
+) {
+    val focus = remember { FocusRequester() }
+    OutlinedTextField(
+        value = merchant,
+        onValueChange = onChange,
+        placeholder = { Text("Merchant (optional)") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+    )
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    val query = merchant.trim()
+    val matches = remember(query, known) {
+        known.filter { query.isEmpty() || (query.lowercase() in it.name.lowercase() && !it.name.equals(query, ignoreCase = true)) }
+            .take(MERCHANT_SUGGESTIONS)
+    }
+    if (matches.isNotEmpty()) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            matches.forEach { m -> SuggestionChip(onClick = { onPick(m) }, label = { Text(m.name) }) }
+        }
+    }
+}
+
+private const val MERCHANT_SUGGESTIONS = 4
 
 @Composable
 private fun NoteField(note: String, onChange: (String) -> Unit) {
