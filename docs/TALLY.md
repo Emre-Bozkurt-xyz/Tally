@@ -16,11 +16,12 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase 0: raw logger | Done for Google Pay + debit: on 2026-10-16 both the Google Wallet and RBC notifications were captured (first fixture). Still unseen: Samsung Pay, physical card, credit card. |
 | Phase 1: manual core | Built. Remaining: place the widget and run the "done when" check on the phone. Ledger, month and category screens checked on the phone; widget installed but not yet placed. |
 | Phase 2: auto capture | Wired end to end: notification → parse → match the wallet/RBC pair → merchant cleanup → memory categorization → capture notification (Change / Ignore / tap to confirm). Parsers know 2 shapes so far (RBC chequing withdrawal, Google Wallet purchase); more as fixtures arrive. Not yet run on a real purchase after wiring. |
-| Phase 3 to 6 | Not started. |
+| Phase 3: rules and inbox | Built: rules engine + TOML file (own parser, errors by line), rules / TOML / aliases screens, review inbox with swipe actions and "always do this", transaction detail with tags and splits. Installed; the "done when" check needs a few weeks of real use. |
+| Phase 4 to 6 | Not started. |
 
 What's verified so far:
-- `./gradlew :core:test`: 97 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures, merchant cleanup, dedupe, categorizer).
-- `./gradlew :app:testDebugUnitTest`: 37 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v3 migration, capture pipeline end to end, seed data, quick-entry save and edit, delete and undo, category tree, category edits, deleting other apps' raw events).
+- `./gradlew :core:test`: 113 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures, merchant cleanup, dedupe, categorizer, rules engine, rules TOML, splits).
+- `./gradlew :app:testDebugUnitTest`: 48 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v4 migration, capture pipeline end to end, inbox, rules repository (TOML round trip, always-do-this, aliases renaming the past), tags, splits, seed data, quick-entry save and edit, delete and undo, category tree, category edits, deleting other apps' raw events).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
 - Debug build installed on the phone (`dev.emre.tally.debug`).
 
@@ -134,6 +135,9 @@ tally/
         ledger/                 # LedgerScreen (start destination), MonthScreen, LedgerFormat
         categories/             # CategoriesScreen (list + add/edit dialog)
         setup/                  # SetupScreen, SetupStatus (+ settings intents)
+        inbox/                  # InboxScreen, CategoryPickerSheet (always-do-this)
+        rules/                  # RulesScreen, TomlEditorScreen, AliasesScreen
+        transaction/            # TransactionScreen (detail, tags, splits)
       quickentry/               # QuickEntryActivity, QuickEntrySheet, QuickEntryTileService, QuickAddShortcut
       widget/                   # QuickAddWidget (Glance) + receiver
       sync/                     # later: SyncWorker (Phase 4)
@@ -213,7 +217,7 @@ It also holds the "Log all packages" toggle and listener health (section 9).
 
 All IDs are UUID strings (generated on device, so sync never needs ID remapping). Every syncable table has `updatedAt: Long` (epoch ms) and `deleted: Boolean` (soft delete for sync).
 
-**Database v3 (built).** v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`; v3 adds `account_identifiers` (`AccountIdentifierEntity`: id, accountId, last4, updatedAt, deleted), several last-4s per account, learned when you set the account on a captured transaction. Tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
+**Database v4 (built).** v4 adds `aliases.priority` (first matching alias wins). v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`; v3 adds `account_identifiers` (`AccountIdentifierEntity`: id, accountId, last4, updatedAt, deleted), several last-4s per account, learned when you set the account on a captured transaction. Tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
 
 ```kotlin
 // Built (v1). Table "raw_events", indexed on receivedAt, sbnKey, source.
@@ -310,6 +314,8 @@ Built in v2 (Phase 1). Table names: `transactions`, `splits`, `tags`, `transacti
     val deleted: Boolean = false,
 )
 
+// Reports expand splits (core `withSplits`): categorized parts count in their category, the
+// remainder in the transaction's, and owed parts don't count as spending.
 // Plus: TagEntity (id, name), TransactionTagCrossRef (PK transactionId + tagId),
 // SplitEntity (transactionId, amountCents, categoryId, owedBy). All with updatedAt + deleted.
 ```
@@ -498,7 +504,7 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 **Android wiring**
 - [x] Listener pipeline (`CapturePipeline`, serialized by a mutex, one DB transaction per capture): store raw, pick parser by package, parse, normalize, dedupe, categorize, write transaction with `status = CAPTURED`, mark raw event `PARSED` / `IGNORED` / `FAILED`.
-- [ ] (Raw event is marked FAILED; the inbox itself is Phase 3.) `FAILED` from a watched package = an inbox flag ("couldn't parse a notification from RBC") with a link to the raw event. This is how you find out RBC changed their wording.
+- [x] `FAILED` from a watched package = an inbox flag (dismiss by swiping; dismissed ones are not re-parsed) ("couldn't parse a notification from RBC") with a link to the raw event. This is how you find out RBC changed their wording.
 - [x] Re-parse action on the raw events screen (refresh icon): re-runs every watched event without a transaction (PENDING and FAILED), oldest first, without posting notifications. Idempotent thanks to `RawEventEntity.transactionId`.
 - [x] **Capture notification** (`CaptureNotifier`, channel "Captured purchases", low importance; tagged by transaction id and updated when the second notification merges in). Split waits for splits (Phase 3). With no suggested category, tapping opens Change instead of confirming. "$4.25 Tim Hortons, Food/Coffee". Actions:
   - Change: opens `QuickEntryActivity` in edit mode.
@@ -517,12 +523,12 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 **Goal:** you control categorization fully, and cleanup is a weekly one-minute swipe session.
 
 **Rules engine (in `core`)**
-- [ ] `RulesEngine.apply(capture)`: rules sorted by `priority`, first match wins. Match = merchant regex on normalized name AND optional amount range AND optional account.
-- [ ] Order in `Categorizer`: rules, then memory, then LLM (Phase 4), then none.
-- [ ] Regex compiled once and cached; invalid regex rejected at save time, never at match time.
+- [x] `RulesEngine.match(merchant, amount, account)`: rules sorted by `priority`, first match wins. Match = case-insensitive regex matching the **whole** normalized name (so "Uber" doesn't catch "Uber Eats"; write "Uber.*") AND optional amount range (inclusive) AND optional account. Rule matches are trusted (logged as confirmed) and apply the rule's tags.
+- [x] Order in `Categorizer`: rules, then memory, then LLM (Phase 4), then none.
+- [x] Regex compiled once per engine; invalid regex rejected at save time (`Rule.patternError`), and skipped rather than crashing at match time.
 
 **TOML codec (in `core`)**
-- [ ] Schema:
+- [x] Schema (`RulesToml`; a hand-written parser for the TOML subset the file needs, so every error has a line number. Regexes are written as single-quoted literal strings so backslashes stay readable):
   ```toml
   [categories]
   Food = ["Groceries", "Eating out", "Coffee"]
@@ -542,18 +548,18 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
   category = "Transport/Uber"
   tags = ["rideshare"]
   ```
-- [ ] `export(db) -> String` and `import(text) -> ValidationResult`. Validation errors carry line numbers: unknown category, bad regex, negative amount, duplicate alias.
-- [ ] Import is replace-all inside one DB transaction. Rule priority = order in the file.
-- [ ] Round-trip test: export, import, export again; strings equal.
+- [x] `export(document)` and `import(text, accountNames)`. Validation errors carry line numbers: unknown category, bad regex, negative amount, duplicate alias, unknown account, unknown key/section, min above max, commas in tags. All semantic errors are reported at once; syntax errors stop at the first.
+- [x] Import is replace-all inside one DB transaction. Rule priority = order in the file. Categories are matched by path so existing ones keep their ids (and history); categories missing from the file are soft-deleted. Identical rules/aliases keep their ids. Aliases are re-applied to past purchases afterwards.
+- [x] Round-trip test: export, import, export again; strings equal (core and against the DB).
 
 **Android**
-- [ ] **"Always do this"** action on transaction detail and on inbox cards: creates a rule from the normalized merchant + chosen category. Optional checkbox "only under $X" prefilled with the current amount rounded up. Asks once whether to re-categorize past transactions from that merchant.
-- [ ] **Rules screen:** list in priority order, drag to reorder, tap to edit in a form. Toolbar button "Edit as TOML".
-- [ ] **TOML editor screen:** monospace text field, Validate button showing errors inline by line, Save disabled until valid. Plain text editing is fine; it's for bulk changes.
-- [ ] **Alias manager:** list + "create alias from this transaction" shortcut (prefills the raw merchant string as an escaped regex).
-- [ ] **Tags:** add/remove on transaction detail; filter ledger by tag.
-- [ ] **Splits:** split a transaction into N parts with category each, or mark a portion `owedBy` a person (for "friend owes me" tracking; simple text name, no contacts integration).
-- [ ] **Review inbox:**
+- [x] **"Always do this"** (inbox swipe-left picker and the detail screen's "Always do this…"; the new rule goes first): creates a rule from the normalized merchant + chosen category. Optional checkbox "only under $X" prefilled with the current amount rounded up. Asks once whether to re-categorize past transactions from that merchant.
+- [x] **Rules screen** (menu > Rules): list in priority order, up/down to reorder (instead of drag), tap to edit in a form. Toolbar button "Edit as TOML".
+- [x] **TOML editor screen:** monospace text field, Validate button showing errors inline by line, Save disabled until valid. Plain text editing is fine; it's for bulk changes.
+- [x] **Alias manager:** list + "from a recent purchase" in the add dialog (prefills the raw merchant string as an escaped regex and the cleaned-up name). Saving renames past purchases' merchants.
+- [x] **Tags:** add/remove on transaction detail; filter ledger by tag (chips above the list).
+- [x] **Splits** (detail screen; also the capture notification's Split action): split a transaction into N parts with category each, or mark a portion `owedBy` a person (for "friend owes me" tracking; simple text name, no contacts integration).
+- [x] **Review inbox** (bell icon on the ledger; tap = edit sheet for now):
   - Contents: `CAPTURED` low/medium confidence transactions, parse failures, (Phase 5) unmatched statement rows and stale unmatched transactions.
   - Card UI: merchant, amount, suggested category. Swipe right = accept, swipe left = category picker, tap = detail.
   - Badge count on the widget and in the app.
@@ -633,8 +639,8 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 ## 8. Testing strategy
 
-- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest`, `ParsersTest`, `GoldenFixturesTest`, `MerchantNormalizerTest`, `CaptureDeduperTest`, `CategorizerTest` (97 tests).
-- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest`, `CapturePipelineTest` (37 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
+- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest`, `ParsersTest`, `GoldenFixturesTest`, `MerchantNormalizerTest`, `CaptureDeduperTest`, `CategorizerTest`, `RulesEngineTest`, `RulesTomlTest`, `SplitsTest` (113 tests).
+- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest`, `CapturePipelineTest`, `RulesRepositoryTest` (48 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
 - **Golden fixtures** are real exported notifications (`RawEventExport` files) and CSV rows. Scrub card numbers beyond last4 before committing (the repo should still be private).
 - **Room migration tests** for every schema version, using the committed schema JSON in `app/schemas/`.
 - **Lint** (`./gradlew :app:lintDebug`) stays at zero issues; suppress only with a comment saying why.
