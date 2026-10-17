@@ -92,6 +92,13 @@ object CaptureNotifier {
         context.getSystemService(NotificationManager::class.java).activeNotifications
             .any { it.tag == transactionId && it.id == NOTIFICATION_ID }
 
+    /** Clears notifications for captures handled elsewhere (the dashboard, another phone). */
+    suspend fun dismissHandled(context: Context, stillNeedsReview: suspend (transactionId: String) -> Boolean) {
+        context.getSystemService(NotificationManager::class.java).activeNotifications
+            .filter { it.id == NOTIFICATION_ID && it.tag != null }
+            .forEach { if (!stillNeedsReview(it.tag)) cancel(context, it.tag) }
+    }
+
     fun cancel(context: Context, transactionId: String) {
         NotificationManagerCompat.from(context).cancel(transactionId, NOTIFICATION_ID)
     }

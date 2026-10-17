@@ -28,7 +28,13 @@ interface SyncCheckpointStore {
     suspend fun save(checkpoint: SyncCheckpoint)
 }
 
-data class SyncResult(val pushed: Int, val pulled: Int, val rejected: List<String>)
+data class SyncResult(
+    val pushed: Int,
+    val pulled: Int,
+    val rejected: List<String>,
+    /** Tables that received newer rows from the server (edits from the dashboard or another phone). */
+    val pulledTables: Set<String> = emptySet(),
+)
 
 /**
  * One sync: push local rows changed since the last sync, then pull everything the server
@@ -56,6 +62,7 @@ class SyncClient(
         val outgoing = tables.values.flatMap { it.changedSince(since) }
 
         var pulled = 0
+        val pulledTables = mutableSetOf<String>()
         val rejected = mutableListOf<String>()
         val batches = outgoing.chunked(SyncProtocol.PUSH_BATCH).ifEmpty { listOf(emptyList()) }
         var hasMore = true
@@ -63,19 +70,21 @@ class SyncClient(
         while (index < batches.size || hasMore) {
             val batch = batches.getOrElse(index++) { emptyList() }
             val response = transport.exchange(SyncRequest(device, checkpoint.cursor, batch))
-            pulled += applyIncoming(response.changes)
+            val applied = applyIncoming(response.changes)
+            pulled += applied.size
+            pulledTables += applied
             rejected += response.rejected
             checkpoint = checkpoint.copy(cursor = response.cursor)
             checkpoints.save(checkpoint)
             hasMore = response.hasMore
         }
         checkpoints.save(checkpoint.copy(watermark = started))
-        SyncResult(pushed = outgoing.size - rejected.size, pulled = pulled, rejected = rejected)
+        SyncResult(pushed = outgoing.size - rejected.size, pulled = pulled, rejected = rejected, pulledTables = pulledTables)
     }
 
-    /** Stores rows that are newer than the local copy. Returns how many changed something. */
-    private suspend fun applyIncoming(changes: List<SyncChange>): Int {
-        if (changes.isEmpty()) return 0
+    /** Stores rows that are newer than the local copy. Returns the table of each one stored. */
+    private suspend fun applyIncoming(changes: List<SyncChange>): List<String> {
+        if (changes.isEmpty()) return emptyList()
         return db.useWriterConnection { connection ->
             connection.immediateTransaction {
                 val newer = changes.filter { change ->
@@ -84,7 +93,7 @@ class SyncClient(
                     local == null || change.updatedAt > local
                 }
                 newer.groupBy { it.table }.forEach { (name, rows) -> tables.getValue(name).apply(rows) }
-                newer.size
+                newer.map { it.table }
             }
         }
     }

@@ -12,6 +12,9 @@ interface SyncStore {
 
     /** Rows with sequence numbers above [since], in order, at most [limit]. */
     fun changesSince(since: Long, limit: Int): List<Sequenced>
+
+    /** The current row of every id in [table], deleted ones included. */
+    fun current(table: String): List<SyncChange>
 }
 
 data class Sequenced(val seq: Long, val change: SyncChange)
@@ -46,6 +49,18 @@ class SyncServer(private val store: SyncStore, private val clock: Clock = Clock.
             rejected = rejected,
         )
     }
+
+    /**
+     * The server's own edits (the web dashboard), under the same rules and lock as a phone's
+     * push. Returns the rows that lost to something newer already stored.
+     */
+    @Synchronized
+    fun write(changes: List<SyncChange>): List<SyncChange> = changes.mapNotNull { change ->
+        require(change.table in SyncProtocol.TABLES) { "unknown table ${change.table}" }
+        store.applyIfNewer(change)
+    }
+
+    fun current(table: String): List<SyncChange> = store.current(table)
 }
 
 /** A [SyncStore] in a map, for tests (and as the reference behaviour for the Postgres one). */
@@ -67,4 +82,8 @@ class InMemorySyncStore : SyncStore {
     @Synchronized
     override fun changesSince(since: Long, limit: Int): List<Sequenced> =
         rows.values.filter { it.seq > since }.sortedBy { it.seq }.take(limit)
+
+    @Synchronized
+    override fun current(table: String): List<SyncChange> =
+        rows.values.map { it.change }.filter { it.table == table }
 }

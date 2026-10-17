@@ -35,6 +35,8 @@ class SyncManager(
     private val db: TallyDatabase,
     val settings: SyncSettings,
     private val clock: Clock = Clock.systemUTC(),
+    /** After a sync stored rows from the server, with the tables they were in. */
+    private val afterPull: suspend (Set<String>) -> Unit = {},
 ) {
     val transport = HttpSyncTransport(settings::currentServer)
     private val client = SyncClient(db, transport, settings, settings::deviceId, clock)
@@ -66,6 +68,10 @@ class SyncManager(
         } catch (e: SerializationException) {
             // A row this version can't read: an app update is needed, retrying won't help.
             Outcome.Failed("Unreadable data from the server: ${e.message}", retry = false)
+        }
+        if (outcome is Outcome.Synced && outcome.result.pulledTables.isNotEmpty()) {
+            runCatching { afterPull(outcome.result.pulledTables) }
+                .onFailure { if (it is CancellationException) throw it else Log.w(TAG, "After sync: ${it.message}") }
         }
         val now = clock.millis()
         when (outcome) {

@@ -1,7 +1,6 @@
 package tally.server
 
 import com.auth0.jwk.JwkProvider
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -29,6 +28,10 @@ import tally.core.llm.CategorizeService
 import tally.core.llm.DailyLimitReached
 import tally.core.sync.SyncRequest
 import tally.core.sync.SyncServer
+import tally.server.web.WebEdits
+import tally.server.web.dashboard
+import java.time.Clock
+import java.time.ZoneId
 
 @Serializable
 data class HealthResponse(val ok: Boolean, val service: String, val database: String)
@@ -46,6 +49,8 @@ fun Application.tallyModule(
     sync: SyncServer,
     jwks: JwkProvider? = null,
     categorize: CategorizeService? = null,
+    zone: ZoneId = ZoneId.of("America/Toronto"),
+    clock: Clock = Clock.systemUTC(),
 ) {
     install(ContentNegotiation) { json() }
     install(CallLogging) {
@@ -109,22 +114,7 @@ fun Application.tallyModule(
                 val caller = call.caller()
                 call.respond(MeResponse(caller.name, caller.kind.name))
             }
-            get("/") {
-                val caller = call.caller()
-                call.respondText(
-                    """
-                    <!doctype html>
-                    <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-                    <title>Tally</title></head>
-                    <body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem">
-                    <h1>Tally</h1>
-                    <p>The server is up and you're signed in as <strong>${caller.name.escapeHtml()}</strong>.</p>
-                    <p>The dashboard arrives later in Phase 4.</p>
-                    </body></html>
-                    """.trimIndent(),
-                    ContentType.Text.Html,
-                )
-            }
+            dashboard(WebEdits(sync, clock), zone, clock)
         }
     }
 }
@@ -132,6 +122,3 @@ fun Application.tallyModule(
 private fun Route.protectedBy(access: AccessConfig?, build: Route.() -> Unit) {
     if (access != null) authenticate(ACCESS_AUTH, build = build) else build()
 }
-
-private fun String.escapeHtml() =
-    replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

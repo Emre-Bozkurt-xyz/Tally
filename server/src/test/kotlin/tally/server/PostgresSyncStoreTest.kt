@@ -55,6 +55,8 @@ class PostgresSyncStoreTest {
         assertEquals(listOf(row("a", t - 10), row("b", t - 5)), response.changes)
         assertTrue(response.cursor > 0)
         assertTrue(sync(response.cursor).changes.isEmpty())
+        assertEquals(setOf(row("a", t - 10), row("b", t - 5)), store.current("transactions").toSet())
+        assertTrue(store.current("rules").isEmpty())
     }
 
     @Test

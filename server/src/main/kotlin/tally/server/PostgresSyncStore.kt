@@ -62,6 +62,15 @@ class PostgresSyncStore(private val dataSource: DataSource) : SyncStore {
         }
     }
 
+    override fun current(table: String): List<SyncChange> = dataSource.connection.use { connection ->
+        connection.prepareStatement(
+            "SELECT table_name, id, updated_at, deleted, data FROM sync_rows WHERE table_name = ?",
+        ).use { statement ->
+            statement.setString(1, table)
+            statement.executeQuery().use { rs -> buildList { while (rs.next()) add(rs.toChange()) } }
+        }
+    }
+
     private fun ResultSet.toChange() = SyncChange(
         table = getString("table_name"),
         id = getString("id"),

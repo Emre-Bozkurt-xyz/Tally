@@ -18,7 +18,7 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase 2: auto capture | Wired end to end: notification → parse → match the wallet/RBC pair → merchant cleanup → memory categorization → capture notification (Change / Ignore / tap to confirm). Parsers know 2 shapes so far (RBC chequing withdrawal, Google Wallet purchase); more as fixtures arrive. Not yet run on a real purchase after wiring. |
 | Phase 3: rules and inbox | Built: rules engine + TOML file (own parser, errors by line), rules / TOML / aliases screens, review inbox with swipe actions and "always do this", transaction detail with tags and splits. Installed; the "done when" check needs a few weeks of real use. |
 | Phase 6: budgets and insights | Built: budgets (categories dialog; month view and widget with 80% / 100% colors), Stats (6-month chart, net per month, top merchants), Subscriptions (detected), Owed to me (settle / undo). |
-| Phase 4: server | Step 1 built: `server/` (Ktor, Postgres, Flyway, Cloudflare Access JWT check), Dockerfile, production compose, deploy/backup scripts, GitHub workflow, `docs/DEPLOYMENT.md`. Image built and run locally against Postgres (health, migrations, 401 without Access). Step 2 built: sync (`POST /api/sync`, `sync_rows` JSONB store, app `SyncClient` + `SyncWorker` + Sync screen), tested two-phone end to end in-process and the store against real Postgres. Server deployed and reachable through Access (2026-10-17). Step 3 built: LLM category suggestions (`POST /api/categorize`, Claude Haiku, cached per merchant in Postgres; the phone asks before each sync). Next: dashboard. |
+| Phase 4: server | Step 1 built: `server/` (Ktor, Postgres, Flyway, Cloudflare Access JWT check), Dockerfile, production compose, deploy/backup scripts, GitHub workflow, `docs/DEPLOYMENT.md`. Image built and run locally against Postgres (health, migrations, 401 without Access). Step 2 built: sync (`POST /api/sync`, `sync_rows` JSONB store, app `SyncClient` + `SyncWorker` + Sync screen), tested two-phone end to end in-process and the store against real Postgres. Server deployed and reachable through Access (2026-10-17). Step 3 built: LLM category suggestions (`POST /api/categorize`, Claude Haiku, cached per merchant in Postgres; the phone asks before each sync). Step 4 built: web dashboard (Overview, Ledger, Inbox, Rules) at `/`. Left: the phone clearing notifications for captures confirmed on the web, and re-applying aliases pulled from the web. |
 | Phase 5 | Not started; needs a real RBC CSV. |
 
 What's verified so far:
@@ -600,10 +600,13 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 - [x] Phone (`CategorySuggester`, run before each sync): captured expenses from the last 30 days with a merchant and no category. The answer enters as `categorySource = LLM`, status stays CAPTURED (inbox, notification says "(suggested)"; a notification is refreshed only if still showing). A conditional update never overwrites a category you picked meanwhile. Confirming teaches merchant memory, so that merchant is never asked again. Errors never fail the sync. Tested: `CategoryPromptTest`, `CategorizeServiceTest`, `AnthropicModelTest` (local stand-in server), route in `AccessAuthTest`, `PostgresCategoryCacheTest`, `CategorySuggesterTest`.
 
 **Web dashboard** (kotlinx.html + HTMX + Chart.js)
-- [ ] Ledger table with filters (date range, category, tag, account, text search), inline category edit.
-- [ ] Monthly overview: spend by category (bar), daily cumulative vs. last month (line), income vs. spend.
-- [ ] Rules page: same TOML editor with validation, plus the form list. Changes sync to the phone like any other rows.
-- [ ] Inbox page for when you'd rather triage on the laptop.
+- [x] Reads the synced rows (`sync_rows`) per request into a `Snapshot` (`server/web`), with row types that mirror the Room entities field for field (`RowsSchemaTest` checks them against the newest committed Room schema). Edits go through `SyncServer.write` (same lock, last write wins) and keep JSON columns the server doesn't know; the phone gets them on its next sync.
+- [x] Ledger table with filters (date range, category incl. subcategories, tag, account, text search), inline category edit (HTMX; confirms and teaches merchant memory like the phone).
+- [x] Monthly overview: cards (spent, income, budget left, to review), spend by category with budget marks and subcategories, day-by-day cumulative vs. last month (Chart.js line), last 6 months spent vs. income (bar), top merchants.
+- [x] Rules page: the same TOML file as the phone's editor, Check and Save (port of the phone's import; writes only changed rows), plus the rules list.
+- [x] Inbox page: confirm a suggestion, pick a category, or ignore.
+- [x] Every POST needs `HX-Request: true` (a cross-site form can't send it), so the Access cookie can't be used for cross-site edits. HTMX 2.0.4 and Chart.js 4.4.7 from jsDelivr.
+- [ ] Phone: after a sync that pulled transactions, clear capture notifications for ones handled on the web; after pulling aliases, re-apply them to old transactions (`RulesRepository.reapplyAliases`).
 
 **Optional in this phase:** Gmail parsers for itemized receipts (Gmail API with OAuth in "testing" mode, your account as the only test user). Only worth it if you find yourself wanting order-level detail.
 

@@ -121,7 +121,7 @@ class SyncClientTest {
         b.ledger.saveQuickEntry(b.ledger.getTransaction(t.id), 450, coffee, null, note = "from b")
         a.sync()
         b.sync()
-        a.sync()
+        assertEquals(setOf("transactions"), a.sync().pulledTables)
         assertEquals("from b", a.ledger.getTransaction(t.id)?.note)
         assertEquals("from b", b.ledger.getTransaction(t.id)?.note)
 
@@ -141,7 +141,7 @@ class SyncClientTest {
         a.sync()
         clock.advance(Duration.ofHours(1))
         val again = a.sync()
-        assertEquals(SyncResult(pushed = 0, pulled = 0, rejected = emptyList()), again)
+        assertEquals(SyncResult(pushed = 0, pulled = 0, rejected = emptyList(), pulledTables = emptySet()), again)
         assertFalse(a.checkpoints.saved.watermark < 0)
     }
 
