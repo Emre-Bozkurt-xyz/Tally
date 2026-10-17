@@ -81,6 +81,7 @@ fun LedgerScreen(
     onOpenSubscriptions: () -> Unit,
     onOpenOwed: () -> Unit,
     onOpenSetup: () -> Unit,
+    onOpenSync: () -> Unit,
     onOpenRawEvents: () -> Unit,
     onOpenTransaction: (String) -> Unit,
 ) {
@@ -145,6 +146,7 @@ fun LedgerScreen(
                         "Categories" to onOpenCategories,
                         "Rules" to onOpenRules,
                         "Setup" to onOpenSetup,
+                        "Sync" to onOpenSync,
                         "Raw events" to onOpenRawEvents,
                     )
                 },

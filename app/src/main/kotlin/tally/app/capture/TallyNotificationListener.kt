@@ -64,10 +64,11 @@ class TallyNotificationListener : NotificationListenerService() {
     private fun toRawEvent(sbn: StatusBarNotification): RawEventEntity {
         val notification = sbn.notification
         val extras = notification.extras
+        val now = System.currentTimeMillis()
         return RawEventEntity(
             id = UUID.randomUUID().toString(),
             source = sbn.packageName,
-            receivedAt = System.currentTimeMillis(),
+            receivedAt = now,
             postedAt = sbn.postTime,
             zoneId = ZoneId.systemDefault().id,
             sbnKey = sbn.key,
@@ -79,6 +80,7 @@ class TallyNotificationListener : NotificationListenerService() {
             extrasJson = ExtrasJson.toJson(extras).toString(),
             parseStatus = ParseStatus.PENDING.name,
             transactionId = null,
+            updatedAt = now,
         )
     }
 

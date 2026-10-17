@@ -18,7 +18,7 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase 2: auto capture | Wired end to end: notification → parse → match the wallet/RBC pair → merchant cleanup → memory categorization → capture notification (Change / Ignore / tap to confirm). Parsers know 2 shapes so far (RBC chequing withdrawal, Google Wallet purchase); more as fixtures arrive. Not yet run on a real purchase after wiring. |
 | Phase 3: rules and inbox | Built: rules engine + TOML file (own parser, errors by line), rules / TOML / aliases screens, review inbox with swipe actions and "always do this", transaction detail with tags and splits. Installed; the "done when" check needs a few weeks of real use. |
 | Phase 6: budgets and insights | Built: budgets (categories dialog; month view and widget with 80% / 100% colors), Stats (6-month chart, net per month, top merchants), Subscriptions (detected), Owed to me (settle / undo). |
-| Phase 4: server | Step 1 built: `server/` (Ktor, Postgres, Flyway, Cloudflare Access JWT check), Dockerfile, production compose, deploy/backup scripts, GitHub workflow, `docs/DEPLOYMENT.md`. Image built and run locally against Postgres (health, migrations, 401 without Access). Waiting on the mini-PC / VPS / Cloudflare setup, then sync, LLM, dashboard. |
+| Phase 4: server | Step 1 built: `server/` (Ktor, Postgres, Flyway, Cloudflare Access JWT check), Dockerfile, production compose, deploy/backup scripts, GitHub workflow, `docs/DEPLOYMENT.md`. Image built and run locally against Postgres (health, migrations, 401 without Access). Step 2 built: sync (`POST /api/sync`, `sync_rows` JSONB store, app `SyncClient` + `SyncWorker` + Sync screen), tested two-phone end to end in-process and the store against real Postgres. Not yet run against the deployed server: waiting on the mini-PC / VPS / Cloudflare setup. Next: LLM, dashboard. |
 | Phase 5 | Not started; needs a real RBC CSV. |
 
 What's verified so far:
@@ -143,7 +143,7 @@ tally/
         insights/               # StatsScreen, SubscriptionsScreen, OwedScreen
       quickentry/               # QuickEntryActivity, QuickEntrySheet, QuickEntryTileService, QuickAddShortcut
       widget/                   # QuickAddWidget (Glance) + receiver
-      sync/                     # later: SyncWorker (Phase 4)
+      sync/                     # SyncTables, SyncClient, HttpSyncTransport, SyncSettings, SyncManager + SyncWorker
     src/main/res/xml/           # file_paths.xml (FileProvider), data_extraction_rules.xml
     src/test/kotlin/...         # Robolectric: RawEventRepositoryTest, ExtrasJsonTest
     schemas/                    # Room schema JSON, committed
@@ -222,7 +222,7 @@ It also holds the "Log all packages" toggle and listener health (section 9).
 
 All IDs are UUID strings (generated on device, so sync never needs ID remapping). Every syncable table has `updatedAt: Long` (epoch ms) and `deleted: Boolean` (soft delete for sync).
 
-**Database v5 (built).** v5 adds `splits.settledAt` (owed portions paid back). v4 adds `aliases.priority` (first matching alias wins). v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`; v3 adds `account_identifiers` (`AccountIdentifierEntity`: id, accountId, last4, updatedAt, deleted), several last-4s per account, learned when you set the account on a captured transaction. Tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
+**Database v6 (built).** v6 adds `raw_events.updatedAt` (default 0; set on receipt and on every parse status change) so raw events sync. v5 adds `splits.settledAt` (owed portions paid back). v4 adds `aliases.priority` (first matching alias wins). v1 had `raw_events` only; v2 adds every table below through a Room `AutoMigration(1, 2)`; v3 adds `account_identifiers` (`AccountIdentifierEntity`: id, accountId, last4, updatedAt, deleted), several last-4s per account, learned when you set the account on a captured transaction. Tested in `TallyDatabaseMigrationTest`. No foreign key constraints: sync can deliver rows in any order, so references are plain indexed columns.
 
 ```kotlin
 // Built (v1). Table "raw_events", indexed on receivedAt, sbnKey, source.
@@ -579,17 +579,19 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 **Server**
 - [x] `server` module: Ktor 3.6 + Postgres (HikariCP, Flyway on startup), depends on `core`. `/healthz` (open), `/api/health` (DB), `/api/me` (who Access says you are), `/` placeholder page.
-- [ ] Tables mirror the syncable Room entities (same UUIDs, same `updatedAt` / `deleted` columns). Raw events sync too (useful for re-parsing on the server later and for backups).
+- [x] One generic table instead of mirrors: `sync_rows (table_name, id, updated_at, deleted, data JSONB, server_seq)` (migration V2). `data` is the Room entity as JSON (every column, defaults included), so a new phone column needs no server migration; the dashboard reads the JSON. Raw events sync too, bank and wallet packages only (never "log all packages" notifications).
 - [x] Auth: Cloudflare Access JWT checked by Ktor's JWT auth against the team's certs (`AccessAuthTest` signs real RS256 tokens: valid user, service token, wrong audience, foreign signature, expired). Phone: service token id/secret in the app's settings (step 2).
 - [x] Dockerfile (Gradle on temurin 25 with `TALLY_SKIP_ANDROID=true`, then temurin 21 JRE alpine, non-root). Postgres volume `tally_postgres`. `.gitattributes` forces LF on `gradlew` and `*.sh` (CRLF broke the image build on Windows checkouts).
 - [x] Nightly backup job: script + cron line in `docs/DEPLOYMENT.md` (cron itself is set up on the mini-PC).
 
 **Sync protocol** (single user, simple on purpose)
-- [ ] `POST /sync` with `{ deviceId, since: serverCursor, changes: [ {table, row} ... ] }`.
-- [ ] Server: applies each incoming row if `incoming.updatedAt > stored.updatedAt` (last write wins), assigns a monotonically increasing `serverSeq` to every write, returns all rows with `serverSeq > since` plus the new cursor.
-- [ ] Client: `SyncWorker` (WorkManager), periodic every 1 h on unmetered or charging + on app foreground + after each capture (debounced 30 s). Tracks dirty rows via a `dirty` flag or a local outbox table.
-- [ ] Clock-skew guard: the server rejects `updatedAt` more than 5 min in the future.
-- [ ] Tests: offline edits on both sides, delete vs. edit conflict (later timestamp wins), first full sync from an existing phone DB.
+- [x] `POST /api/sync` with `{ deviceId, since: cursor, changes: [ {table, id, updatedAt, deleted, data} ] }` (`core/sync/SyncProtocol`). `transaction_tags` rows use `transactionId|tagId` as id.
+- [x] Server (`core/sync/SyncServer`, shared by Postgres and the in-memory test store): applies a row only if `incoming.updatedAt > stored.updatedAt` (one upsert with a `WHERE`), gives every write the next `server_seq`, returns rows after `since` in pages of 500 plus the cursor, and sends back its own copy of any row you pushed an older version of. Requests are handled one at a time so sequence numbers commit in order. Sequence numbers can have gaps (skipped upserts still draw one); only their order matters.
+- [x] Client (`app/sync/SyncClient`): no dirty flags. A watermark (start time of the last good sync) picks the rows to push (`updatedAt >= watermark - 60 s`; first sync pushes everything), in batches of 200; then pulls pages until done. Incoming rows are stored only if newer than the local copy. The cursor is saved after each page is stored, so an interrupted sync just resumes.
+- [x] When: `SyncWorker` (WorkManager, needs a network) hourly, on app open, and 30 s after the last local change in a burst (Room invalidation, raw events excluded). Nothing runs until the Sync screen has the server URL and service token. Changing the server URL starts over.
+- [x] Clock-skew guard: the server refuses `updatedAt` more than 5 min in the future; the Sync screen reports refused rows.
+- [x] Tests: `SyncServerTest` (core), `PostgresSyncStoreTest` (runs when `TALLY_TEST_DATABASE_URL` is set; CI has a Postgres service), `/api/sync` auth + bad JSON in `AccessAuthTest`, and `SyncClientTest` (Robolectric, two phones, JSON on the wire): a fresh phone restores everything (budget edit beats the fresh seed, tags, splits, captured merchant, raw events) and never receives a WhatsApp notification; offline edits on both phones (later wins); delete after edit; a quiet second sync sends and receives nothing.
+- [x] Phone side: `HttpSyncTransport` sends `CF-Access-Client-Id` / `CF-Access-Client-Secret`, never follows redirects (a bad token is redirected to the Access login page), and treats 401/403/3xx or non-JSON as "Access refused the token". Sync screen (menu, Sync): URL (default `https://tally.ems-place.com`), client id, secret, Test connection (`/api/me`), Sync now, last result.
 
 **LLM categorization**
 - [ ] Server endpoint `POST /categorize { merchant, amountCents, categories[] }`, called by the phone for low-confidence captures when online.

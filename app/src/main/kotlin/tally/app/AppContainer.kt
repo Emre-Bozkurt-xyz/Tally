@@ -14,6 +14,8 @@ import tally.app.data.RawEventRepository
 import tally.app.data.RulesRepository
 import tally.app.data.SettingsRepository
 import tally.app.data.TallyDatabase
+import tally.app.sync.SyncManager
+import tally.app.sync.SyncSettings
 import tally.app.widget.QuickAddWidget
 
 /** Hand-rolled dependency container, created once in [TallyApplication.onCreate]. */
@@ -30,9 +32,13 @@ class AppContainer(context: Context) {
     val capture = CapturePipeline(database, captureMemory)
     val categories = CategoryRepository(database)
     val rules = RulesRepository(database)
+    val sync = SyncManager(appContext, database, SyncSettings(context, appScope))
 
     init {
         appScope.launch { DefaultData.seedIfEmpty(database) }
         appScope.launch { QuickAddWidget.refreshOnChanges(appContext, ledger) }
+        // WorkManager is only touched once sync is set up (it isn't in Robolectric tests).
+        appScope.launch { if (sync.settings.currentServer().isComplete) sync.updateSchedule() }
+        sync.watchLocalChanges(appScope)
     }
 }

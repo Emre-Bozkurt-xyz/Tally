@@ -3,12 +3,14 @@ package tally.app.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 /**
  * Two levels: top-level categories (`parentId == null`) and their subcategories. A
  * transaction can use either; parent totals include their subcategories.
  */
 @Entity(tableName = "categories", indices = [Index("parentId")])
+@Serializable
 data class CategoryEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -22,6 +24,7 @@ data class CategoryEntity(
 )
 
 @Entity(tableName = "accounts")
+@Serializable
 data class AccountEntity(
     @PrimaryKey val id: String,
     /** "RBC Visa", "RBC Chequing", "Cash". */
@@ -39,6 +42,7 @@ data class AccountEntity(
  * you set the account on a captured transaction.
  */
 @Entity(tableName = "account_identifiers", indices = [Index("last4"), Index("accountId")])
+@Serializable
 data class AccountIdentifierEntity(
     @PrimaryKey val id: String,
     val accountId: String,

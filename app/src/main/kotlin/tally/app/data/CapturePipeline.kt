@@ -63,11 +63,11 @@ class CapturePipeline(
         when (val result = CaptureParsers.parse(event.toRawNotification())) {
             null -> Outcome.NotWatched
             is ParseResult.Ignored -> {
-                rawEvents.markParsed(event.id, ParseStatus.IGNORED.name, null)
+                rawEvents.markParsed(event.id, ParseStatus.IGNORED.name, null, clock.millis())
                 Outcome.Marked(ParseStatus.IGNORED, result.reason)
             }
             is ParseResult.Failed -> {
-                rawEvents.markParsed(event.id, ParseStatus.FAILED.name, null)
+                rawEvents.markParsed(event.id, ParseStatus.FAILED.name, null, clock.millis())
                 Outcome.Marked(ParseStatus.FAILED, result.reason)
             }
             is ParseResult.Parsed -> db.useWriterConnection { connection ->
@@ -97,7 +97,7 @@ class CapturePipeline(
         } else {
             merge(transactions.getByIdIncludingDeleted(match.transactionId)!!, capture, accountId, merchant, categorizer, now)
         }
-        rawEvents.markParsed(event.id, ParseStatus.PARSED.name, transaction.id)
+        rawEvents.markParsed(event.id, ParseStatus.PARSED.name, transaction.id, now)
         memory.learnAccount(transaction.id, transaction.accountId)
 
         val merchantName = transaction.merchantId?.let { merchants.getById(it)?.name }

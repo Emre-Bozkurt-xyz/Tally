@@ -12,6 +12,7 @@ import androidx.room.RoomDatabase
  * v3: account_identifiers (several last-4s per account; Phase 2).
  * v4: aliases.priority (alias order; Phase 3).
  * v5: splits.settledAt ("owed to me"; Phase 6).
+ * v6: raw_events.updatedAt (sync; Phase 4).
  *
  * Every version's schema JSON is committed in `app/schemas/`; migrations are tested
  * against it in `TallyDatabaseMigrationTest`.
@@ -30,9 +31,9 @@ import androidx.room.RoomDatabase
         RuleEntity::class,
         AccountIdentifierEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 abstract class TallyDatabase : RoomDatabase() {
     abstract fun rawEventDao(): RawEventDao
@@ -45,6 +46,7 @@ abstract class TallyDatabase : RoomDatabase() {
     abstract fun aliasDao(): AliasDao
     abstract fun tagDao(): TagDao
     abstract fun splitDao(): SplitDao
+    abstract fun syncDao(): SyncDao
 
     companion object {
         const val NAME = "tally.db"

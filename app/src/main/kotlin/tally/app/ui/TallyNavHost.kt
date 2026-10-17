@@ -20,6 +20,7 @@ import tally.app.ui.rules.AliasesScreen
 import tally.app.ui.rules.RulesScreen
 import tally.app.ui.rules.TomlEditorScreen
 import tally.app.ui.setup.SetupScreen
+import tally.app.ui.sync.SyncScreen
 import tally.app.ui.transaction.TransactionScreen
 import tally.core.model.ParseStatus
 
@@ -38,6 +39,7 @@ private object Routes {
     const val RAW_EVENTS = "raw-events"
     const val RAW_EVENT = "raw-events/{id}"
     const val SETUP = "setup"
+    const val SYNC = "sync"
 
     fun rawEvent(id: String) = "raw-events/$id"
 
@@ -63,6 +65,7 @@ fun TallyNavHost(container: AppContainer, openTransactionId: String? = null) {
                 onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) },
                 onOpenOwed = { nav.navigate(Routes.OWED) },
                 onOpenSetup = { nav.navigate(Routes.SETUP) },
+                onOpenSync = { nav.navigate(Routes.SYNC) },
                 onOpenRawEvents = { nav.navigate(Routes.RAW_EVENTS) },
                 onOpenTransaction = { nav.navigate(Routes.transaction(it)) },
             )
@@ -136,6 +139,9 @@ fun TallyNavHost(container: AppContainer, openTransactionId: String? = null) {
                 id = entry.arguments?.getString("id").orEmpty(),
                 onBack = { nav.popBackStack() },
             )
+        }
+        composable(Routes.SYNC) {
+            SyncScreen(sync = container.sync, onBack = { nav.popBackStack() })
         }
         composable(Routes.SETUP) {
             SetupScreen(

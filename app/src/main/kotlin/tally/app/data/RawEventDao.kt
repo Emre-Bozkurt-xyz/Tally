@@ -23,8 +23,8 @@ interface RawEventDao {
     @Query("SELECT * FROM raw_events WHERE parseStatus = 'FAILED' AND source IN (:sources) ORDER BY postedAt DESC")
     fun observeFailed(sources: Set<String>): Flow<List<RawEventEntity>>
 
-    @Query("UPDATE raw_events SET parseStatus = :status, transactionId = :transactionId WHERE id = :id")
-    suspend fun markParsed(id: String, status: String, transactionId: String?)
+    @Query("UPDATE raw_events SET parseStatus = :status, transactionId = :transactionId, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markParsed(id: String, status: String, transactionId: String?, updatedAt: Long)
 
     @Query("SELECT * FROM raw_events WHERE transactionId = :transactionId")
     suspend fun linkedTo(transactionId: String): List<RawEventEntity>

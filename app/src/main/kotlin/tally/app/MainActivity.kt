@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import tally.app.ui.TallyNavHost
 import tally.app.ui.theme.TallyTheme
 
@@ -18,6 +20,11 @@ class MainActivity : ComponentActivity() {
                 TallyNavHost(container = appContainer, openTransactionId = intent.getStringExtra(EXTRA_TRANSACTION_ID))
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch { appContainer.sync.requestSync() }
     }
 
     companion object {

@@ -3,15 +3,18 @@ package tally.app.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 // Syncable tables share two conventions: UUID string ids generated on the device, and
 // `updatedAt` (epoch ms) + `deleted` (soft delete) for last-write-wins sync. No foreign key
 // constraints: sync can deliver rows in any order, so references are plain indexed columns.
+// @Serializable: rows travel to the server as JSON (tally.app.sync.SyncTables).
 
 @Entity(
     tableName = "transactions",
     indices = [Index("occurredAt"), Index("categoryId"), Index("merchantId"), Index("accountId")],
 )
+@Serializable
 data class TransactionEntity(
     @PrimaryKey val id: String,
     /** Positive = money out, negative = money in (refunds, deposits). */
@@ -40,6 +43,7 @@ data class TransactionEntity(
 
 /** Part of a transaction with its own category, or a portion someone else owes. */
 @Entity(tableName = "splits", indices = [Index("transactionId")])
+@Serializable
 data class SplitEntity(
     @PrimaryKey val id: String,
     val transactionId: String,
@@ -54,6 +58,7 @@ data class SplitEntity(
 )
 
 @Entity(tableName = "tags")
+@Serializable
 data class TagEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -66,6 +71,7 @@ data class TagEntity(
     primaryKeys = ["transactionId", "tagId"],
     indices = [Index("tagId")],
 )
+@Serializable
 data class TransactionTagCrossRef(
     val transactionId: String,
     val tagId: String,

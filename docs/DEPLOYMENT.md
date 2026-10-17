@@ -138,6 +138,13 @@ curl -sk -o /dev/null -w '%{http_code}\n' \
 In a browser, `https://tally.ems-place.com` shows the Access login, then "signed in as <you>".
 `/api/health` reports the database.
 
+## Phone
+
+Tally, menu, **Sync**: keep the server URL, paste the `tally-phone` Client ID and Client
+Secret, then **Test connection** (should say "Connected as ... (service token)") and
+**Sync now**. The first sync sends everything; after that it runs hourly, when the app opens,
+and 30 seconds after changes.
+
 ## Backups
 
 `scripts/backup-db.sh` writes `backups/tally_<timestamp>.sql` and keeps the last 30. Nightly on

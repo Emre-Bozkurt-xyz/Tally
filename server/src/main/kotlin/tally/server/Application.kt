@@ -8,17 +8,24 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
+import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.path
+import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import org.slf4j.event.Level
+import tally.core.sync.SyncRequest
+import tally.core.sync.SyncServer
 
 @Serializable
 data class HealthResponse(val ok: Boolean, val service: String, val database: String)
@@ -30,13 +37,21 @@ data class MeResponse(val name: String, val kind: String)
  * The HTTP surface. [access] null means local dev without Cloudflare (ACCESS_DISABLED=true);
  * [jwks] is swappable for tests.
  */
-fun Application.tallyModule(access: AccessConfig?, database: DatabaseCheck, jwks: JwkProvider? = null) {
+fun Application.tallyModule(
+    access: AccessConfig?,
+    database: DatabaseCheck,
+    sync: SyncServer,
+    jwks: JwkProvider? = null,
+) {
     install(ContentNegotiation) { json() }
     install(CallLogging) {
         level = Level.INFO
         filter { it.request.path() != "/healthz" }
     }
     install(StatusPages) {
+        exception<BadRequestException> { call, cause ->
+            call.respond(HttpStatusCode.BadRequest, mapOf("error" to (cause.message ?: "bad request")))
+        }
         exception<Throwable> { call, cause ->
             call.application.environment.log.error("Unhandled error", cause)
             call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "internal error"))
@@ -62,6 +77,11 @@ fun Application.tallyModule(access: AccessConfig?, database: DatabaseCheck, jwks
                     if (up) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable,
                     HealthResponse(ok = up, service = "tally", database = if (up) "ok" else "unreachable"),
                 )
+            }
+            post("/api/sync") {
+                val request = call.receive<SyncRequest>()
+                val response = withContext(Dispatchers.IO) { sync.handle(request) }
+                call.respond(response)
             }
             get("/api/me") {
                 val caller = call.caller()

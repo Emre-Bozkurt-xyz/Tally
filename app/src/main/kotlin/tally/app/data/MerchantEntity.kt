@@ -4,9 +4,11 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 /** A normalized merchant, plus the category memory used to categorize its next capture. */
 @Entity(tableName = "merchants", indices = [Index("name")])
+@Serializable
 data class MerchantEntity(
     @PrimaryKey val id: String,
     /** Normalized display name. */
@@ -19,6 +21,7 @@ data class MerchantEntity(
 
 /** Maps raw merchant strings matching [pattern] (a regex) to [merchantName]. */
 @Entity(tableName = "aliases")
+@Serializable
 data class AliasEntity(
     @PrimaryKey val id: String,
     val pattern: String,
@@ -30,6 +33,7 @@ data class AliasEntity(
 )
 
 @Entity(tableName = "rules", indices = [Index("priority")])
+@Serializable
 data class RuleEntity(
     @PrimaryKey val id: String,
     /** Lower runs first; the first matching rule wins. */

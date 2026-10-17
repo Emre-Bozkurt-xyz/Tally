@@ -6,14 +6,20 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import tally.core.sync.InMemorySyncStore
+import tally.core.sync.SyncServer
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPrivateKey
@@ -57,7 +63,7 @@ class AccessAuthTest {
         .sign(Algorithm.RSA256(signWith.public as RSAPublicKey, signWith.private as RSAPrivateKey))
 
     private fun app(databaseUp: Boolean = true, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
-        application { tallyModule(access, { databaseUp }, jwks) }
+        application { tallyModule(access, { databaseUp }, SyncServer(InMemorySyncStore()), jwks) }
         block()
     }
 
@@ -94,6 +100,29 @@ class AccessAuthTest {
         for (bad in listOf(token(audience = "other-app"), token(signWith = otherKeys), token(expiresInSeconds = -120))) {
             assertEquals(HttpStatusCode.Unauthorized, client.get("/api/me") { header(ACCESS_JWT_HEADER, bad) }.status)
         }
+    }
+
+    @Test
+    fun `sync needs access and round trips a row`() = app {
+        val body = """{"deviceId":"phone","since":0,"changes":[
+            {"table":"transactions","id":"t1","updatedAt":${System.currentTimeMillis()},"deleted":false,"data":{"amountCents":425}}]}"""
+        assertEquals(
+            HttpStatusCode.Unauthorized,
+            client.post("/api/sync") { contentType(ContentType.Application.Json); setBody(body) }.status,
+        )
+        val response = client.post("/api/sync") {
+            header(ACCESS_JWT_HEADER, token(email = null, commonName = "phone.access"))
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertTrue(response.bodyAsText().contains(""""cursor":1"""))
+        val bad = client.post("/api/sync") {
+            header(ACCESS_JWT_HEADER, token())
+            contentType(ContentType.Application.Json)
+            setBody("not json")
+        }
+        assertEquals(HttpStatusCode.BadRequest, bad.status)
     }
 
     @Test

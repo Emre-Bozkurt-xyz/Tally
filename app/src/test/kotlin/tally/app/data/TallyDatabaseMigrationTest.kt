@@ -36,7 +36,7 @@ class TallyDatabaseMigrationTest {
     )
 
     @Test
-    fun `1 to 5 keeps raw events and creates the new tables`() = runTest {
+    fun `1 to 6 keeps raw events and creates the new tables`() = runTest {
         helper.createDatabase(1).use { connection ->
             connection.execSQL(
                 """
@@ -53,6 +53,7 @@ class TallyDatabaseMigrationTest {
         helper.runMigrationsAndValidate(3).close()
         helper.runMigrationsAndValidate(4).close()
         helper.runMigrationsAndValidate(5).close()
+        helper.runMigrationsAndValidate(6).close()
 
         val db = Room.databaseBuilder(context, TallyDatabase::class.java, dbFile.absolutePath)
             .setDriver(driver)
@@ -61,6 +62,8 @@ class TallyDatabaseMigrationTest {
             val raw = db.rawEventDao().getAll().single()
             assertEquals("raw-1", raw.id)
             assertEquals("A purchase of \$4.25", raw.text)
+            // Old rows count as "changed long ago", so the first sync still sends them.
+            assertEquals(0L, raw.updatedAt)
 
             DefaultData.seedIfEmpty(db)
             assertEquals(DefaultData.categories().size, db.categoryDao().observeActive().first().size)

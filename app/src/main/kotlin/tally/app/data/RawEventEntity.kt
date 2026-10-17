@@ -1,8 +1,10 @@
 package tally.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 import tally.core.capture.RawNotification
 import java.time.Instant
 
@@ -14,6 +16,7 @@ import java.time.Instant
     tableName = "raw_events",
     indices = [Index("receivedAt"), Index("sbnKey"), Index("source")],
 )
+@Serializable
 data class RawEventEntity(
     @PrimaryKey val id: String,
     /** Package name, or `csv:<file>` for statement rows. */
@@ -36,6 +39,8 @@ data class RawEventEntity(
     /** A [tally.core.model.ParseStatus] name. */
     val parseStatus: String,
     val transactionId: String?,
+    /** Epoch ms of the last change (receipt, then parsing), for sync. 0 on rows from before v6. */
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = 0,
 )
 
 fun RawEventEntity.toRawNotification() = RawNotification(

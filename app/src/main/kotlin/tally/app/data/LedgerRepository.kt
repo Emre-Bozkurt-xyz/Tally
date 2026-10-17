@@ -108,7 +108,7 @@ class LedgerRepository(
 
     /** "Seen it": drops an unreadable notification from the inbox (and from re-parse). */
     suspend fun dismissUnreadNotification(rawEventId: String) =
-        db.rawEventDao().markParsed(rawEventId, ParseStatus.IGNORED.name, null)
+        db.rawEventDao().markParsed(rawEventId, ParseStatus.IGNORED.name, null, clock.millis())
 
     /** Including deleted ones, for labelling old transactions. */
     fun observeAllMerchants(): Flow<List<MerchantEntity>> = db.merchantDao().observeAll()
