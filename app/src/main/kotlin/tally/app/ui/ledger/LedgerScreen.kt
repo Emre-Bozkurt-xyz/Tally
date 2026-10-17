@@ -72,6 +72,7 @@ fun LedgerScreen(
     onOpenMonth: () -> Unit,
     onOpenInbox: () -> Unit,
     onOpenCategories: () -> Unit,
+    onOpenRules: () -> Unit,
     onOpenSetup: () -> Unit,
     onOpenRawEvents: () -> Unit,
 ) {
@@ -123,6 +124,7 @@ fun LedgerScreen(
                     }
                     OverflowMenu(
                         "Categories" to onOpenCategories,
+                        "Rules" to onOpenRules,
                         "Setup" to onOpenSetup,
                         "Raw events" to onOpenRawEvents,
                     )

@@ -126,6 +126,39 @@ class RulesRepositoryTest {
     }
 
     @Test
+    fun `saving rules validates, appends, and moves`() = runTest {
+        fun rule(pattern: String, min: Long? = null, max: Long? = null) = RuleEntity(
+            id = UUID.randomUUID().toString(), priority = 0, merchantPattern = pattern, minAmountCents = min,
+            maxAmountCents = max, accountId = null, categoryId = groceries, tagsCsv = null, updatedAt = 0,
+        )
+        assertTrue(repo.saveRule(rule("Tim (Hortons")) != null)
+        assertTrue(repo.saveRule(rule("Metro", min = 500, max = 100)) != null)
+
+        val a = rule("Metro")
+        val b = rule("Costco")
+        assertEquals(null, repo.saveRule(a))
+        assertEquals(null, repo.saveRule(b))
+        assertEquals(listOf("Metro", "Costco"), db.ruleDao().getActive().map { it.merchantPattern })
+
+        repo.moveRule(b.id, -1)
+        assertEquals(listOf("Costco", "Metro"), db.ruleDao().getActive().map { it.merchantPattern })
+        repo.deleteRule(a.id)
+        assertEquals(listOf("Costco"), db.ruleDao().getActive().map { it.merchantPattern })
+    }
+
+    @Test
+    fun `saving an alias renames past purchases`() = runTest {
+        val before = captureFoodieFruitie().transaction
+        assertEquals("Foodie Fruitie", db.merchantDao().getById(before.merchantId!!)?.name)
+
+        assertEquals(null, repo.saveAlias(null, "(?i)^foodie", "Foodie Fruitie Market"))
+        val after = db.transactionDao().getById(before.id)!!
+        assertEquals("Foodie Fruitie Market", db.merchantDao().getById(after.merchantId!!)?.name)
+        assertTrue(repo.saveAlias(null, "(?i)^foodie", "Again") != null) // Duplicate pattern.
+        assertEquals(listOf("FOODIE FRUITIE"), repo.recentMerchantRaws())
+    }
+
+    @Test
     fun `an invalid file changes nothing`() = runTest {
         val before = repo.exportToml()
         val result = repo.importToml("[categories]\nFood = []\n\n[[rule]]\nmerchant = \"x\"\ncategory = \"Nope\"")

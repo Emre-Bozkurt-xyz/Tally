@@ -3,6 +3,7 @@ package tally.app.data
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import kotlinx.coroutines.flow.Flow
+import tally.core.normalize.MerchantNormalizer
 import tally.core.rules.AliasSpec
 import tally.core.rules.CategorySpec
 import tally.core.rules.Rule
@@ -25,6 +26,90 @@ class RulesRepository(
     fun observeRules(): Flow<List<RuleEntity>> = rules.observeActive()
 
     fun observeAliases(): Flow<List<AliasEntity>> = aliases.observeActive()
+
+    /** Checks a TOML file without saving it. */
+    suspend fun validateToml(text: String): TomlImport =
+        RulesToml.import(text, db.accountDao().getActive().map { it.name }.toSet())
+
+    /** Adds ([rule].id not saved yet) or updates a rule. Returns an error message, or null. */
+    suspend fun saveRule(rule: RuleEntity): String? {
+        Rule.patternError(rule.merchantPattern)?.let { return it }
+        val min = rule.minAmountCents
+        val max = rule.maxAmountCents
+        if ((min != null && min < 0) || (max != null && max < 0)) return "Amounts can't be negative"
+        if (min != null && max != null && min > max) return "The minimum is above the maximum"
+        if (rule.tagsCsv.orEmpty().split(',').any { it.isNotEmpty() && it.isBlank() }) return "Empty tag"
+        val existing = rules.getActive()
+        val priority = existing.find { it.id == rule.id }?.priority ?: ((existing.maxOfOrNull { it.priority } ?: -1) + 1)
+        rules.upsertAll(listOf(rule.copy(priority = priority, updatedAt = clock.millis())))
+        return null
+    }
+
+    suspend fun deleteRule(id: String) {
+        rules.getActive().find { it.id == id }?.let { rules.upsertAll(listOf(it.copy(deleted = true, updatedAt = clock.millis()))) }
+    }
+
+    /** Swaps a rule with the one above ([by] = -1) or below (1). */
+    suspend fun moveRule(id: String, by: Int) {
+        val ordered = rules.getActive().toMutableList()
+        val from = ordered.indexOfFirst { it.id == id }
+        val to = from + by
+        if (from < 0 || to !in ordered.indices) return
+        ordered.add(to, ordered.removeAt(from))
+        val now = clock.millis()
+        rules.upsertAll(ordered.mapIndexedNotNull { i, rule -> if (rule.priority == i) null else rule.copy(priority = i, updatedAt = now) })
+    }
+
+    /** Adds or updates an alias, then renames past merchants to match. Returns an error, or null. */
+    suspend fun saveAlias(id: String?, pattern: String, merchantName: String): String? {
+        Rule.patternError(pattern)?.let { return it }
+        if (merchantName.isBlank()) return "Enter the merchant name"
+        val existing = aliases.getActive()
+        if (existing.any { it.id != id && it.pattern == pattern }) return "There's already an alias for that pattern"
+        val now = clock.millis()
+        val alias = existing.find { it.id == id }?.copy(pattern = pattern, merchantName = merchantName.trim(), updatedAt = now)
+            ?: AliasEntity(UUID.randomUUID().toString(), pattern, merchantName.trim(), (existing.maxOfOrNull { it.priority } ?: -1) + 1, now)
+        aliases.upsertAll(listOf(alias))
+        reapplyAliases()
+        return null
+    }
+
+    suspend fun deleteAlias(id: String) {
+        aliases.getActive().find { it.id == id }?.let { aliases.upsertAll(listOf(it.copy(deleted = true, updatedAt = clock.millis()))) }
+        reapplyAliases()
+    }
+
+    suspend fun moveAlias(id: String, by: Int) {
+        val ordered = aliases.getActive().toMutableList()
+        val from = ordered.indexOfFirst { it.id == id }
+        val to = from + by
+        if (from < 0 || to !in ordered.indices) return
+        ordered.add(to, ordered.removeAt(from))
+        val now = clock.millis()
+        aliases.upsertAll(ordered.mapIndexedNotNull { i, alias -> if (alias.priority == i) null else alias.copy(priority = i, updatedAt = now) })
+        reapplyAliases()
+    }
+
+    /** Raw merchant strings from recent purchases, for "make an alias from this". */
+    suspend fun recentMerchantRaws(): List<String> = db.transactionDao().recentMerchantRaws(30)
+
+    /**
+     * Re-runs merchant cleanup with the current aliases over every captured transaction, so
+     * the ledger shows the new names. Merchants are found or created by name.
+     */
+    suspend fun reapplyAliases() = db.useWriterConnection { connection ->
+        connection.immediateTransaction {
+            val normalizer = MerchantNormalizer(aliases.getActive().mapNotNull { it.toAlias() })
+            val merchants = db.merchantDao()
+            val now = clock.millis()
+            for (ref in db.transactionDao().merchantRefs()) {
+                val name = normalizer.normalize(ref.merchantRaw)
+                val merchant = merchants.findByName(name)
+                    ?: MerchantEntity(UUID.randomUUID().toString(), name, null, 0, now).also { merchants.upsert(it) }
+                if (merchant.id != ref.merchantId) db.transactionDao().setMerchant(ref.id, merchant.id, now)
+            }
+        }
+    }
 
     /** The categories, aliases and rules as an editable TOML file. */
     suspend fun exportToml(): String {
@@ -62,6 +147,7 @@ class RulesRepository(
             db.useWriterConnection { connection ->
                 connection.immediateTransaction { apply(result.document, accounts.associate { it.name to it.id }) }
             }
+            reapplyAliases()
         }
         return result
     }

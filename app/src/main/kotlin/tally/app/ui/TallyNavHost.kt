@@ -12,6 +12,9 @@ import tally.app.ui.ledger.LedgerScreen
 import tally.app.ui.ledger.MonthScreen
 import tally.app.ui.rawevents.RawEventDetailScreen
 import tally.app.ui.rawevents.RawEventsScreen
+import tally.app.ui.rules.AliasesScreen
+import tally.app.ui.rules.RulesScreen
+import tally.app.ui.rules.TomlEditorScreen
 import tally.app.ui.setup.SetupScreen
 import tally.core.model.ParseStatus
 
@@ -20,6 +23,9 @@ private object Routes {
     const val INBOX = "inbox"
     const val MONTH = "month"
     const val CATEGORIES = "categories"
+    const val RULES = "rules"
+    const val RULES_TOML = "rules/toml"
+    const val ALIASES = "rules/aliases"
     const val RAW_EVENTS = "raw-events"
     const val RAW_EVENT = "raw-events/{id}"
     const val SETUP = "setup"
@@ -37,6 +43,7 @@ fun TallyNavHost(container: AppContainer) {
                 onOpenMonth = { nav.navigate(Routes.MONTH) },
                 onOpenInbox = { nav.navigate(Routes.INBOX) },
                 onOpenCategories = { nav.navigate(Routes.CATEGORIES) },
+                onOpenRules = { nav.navigate(Routes.RULES) },
                 onOpenSetup = { nav.navigate(Routes.SETUP) },
                 onOpenRawEvents = { nav.navigate(Routes.RAW_EVENTS) },
             )
@@ -58,6 +65,21 @@ fun TallyNavHost(container: AppContainer) {
                 repository = container.categories,
                 onBack = { nav.popBackStack() },
             )
+        }
+        composable(Routes.RULES) {
+            RulesScreen(
+                rules = container.rules,
+                ledger = container.ledger,
+                onEditToml = { nav.navigate(Routes.RULES_TOML) },
+                onOpenAliases = { nav.navigate(Routes.ALIASES) },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.RULES_TOML) {
+            TomlEditorScreen(rules = container.rules, onBack = { nav.popBackStack() })
+        }
+        composable(Routes.ALIASES) {
+            AliasesScreen(rules = container.rules, onBack = { nav.popBackStack() })
         }
         composable(Routes.RAW_EVENTS) {
             RawEventsScreen(

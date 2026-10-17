@@ -52,6 +52,22 @@ interface TransactionDao {
     )
     suspend fun categorizeMerchant(merchantId: String, categoryId: String, maxAmountCents: Long, now: Long): Int
 
+    /** Captured transactions' raw merchant strings, for re-applying aliases. */
+    @Query("SELECT id, merchantRaw, merchantId FROM transactions WHERE merchantRaw IS NOT NULL")
+    suspend fun merchantRefs(): List<MerchantRef>
+
+    @Query("UPDATE transactions SET merchantId = :merchantId, updatedAt = :now WHERE id = :id")
+    suspend fun setMerchant(id: String, merchantId: String, now: Long)
+
+    /** Distinct raw merchant strings, most recent first: suggestions for new aliases. */
+    @Query(
+        """
+        SELECT merchantRaw FROM transactions WHERE merchantRaw IS NOT NULL AND NOT deleted
+        GROUP BY merchantRaw ORDER BY MAX(occurredAt) DESC LIMIT :limit
+        """,
+    )
+    suspend fun recentMerchantRaws(limit: Int): List<String>
+
     /** Soft delete (and undo), so the change syncs. */
     @Query("UPDATE transactions SET deleted = :deleted, updatedAt = :updatedAt WHERE id = :id")
     suspend fun setDeleted(id: String, deleted: Boolean, updatedAt: Long)
@@ -66,6 +82,8 @@ interface TransactionDao {
 }
 
 data class CategoryUseRow(val categoryId: String, val occurredAt: Long, val zoneId: String)
+
+data class MerchantRef(val id: String, val merchantRaw: String, val merchantId: String?)
 
 data class DedupeRow(
     val transactionId: String,
