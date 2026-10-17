@@ -86,6 +86,37 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun `tags are created once, linked, and removed`() = runTest {
+        val a = ledger.saveQuickEntry(null, 425, coffee, cash, note = null)
+        val b = ledger.saveQuickEntry(null, 999, groceries, cash, note = null)
+
+        assertNull(ledger.addTag(a.id, "#Trip"))
+        assertNull(ledger.addTag(b.id, "trip"))
+        assertEquals("Tags can't contain commas", ledger.addTag(a.id, "a,b"))
+        assertEquals(listOf("Trip"), ledger.observeTags().first().map { it.name })
+        assertEquals(2, ledger.observeTagLinks().first().size)
+
+        ledger.removeTag(a.id, ledger.observeTags().first().single().id)
+        assertEquals(emptyList<TagEntity>(), ledger.observeTagsFor(a.id).first())
+        assertEquals(listOf(b.id), ledger.observeTagLinks().first().map { it.transactionId })
+    }
+
+    @Test
+    fun `splits can't exceed the purchase`() = runTest {
+        val dinner = ledger.saveQuickEntry(null, 3000, groceries, cash, note = null)
+
+        assertNull(ledger.addSplit(dinner.id, 1000, coffee, owedBy = null))
+        assertNull(ledger.addSplit(dinner.id, 1500, null, owedBy = "Sam"))
+        assertEquals("Only \$5.00 left to split", ledger.addSplit(dinner.id, 600, coffee, null))
+        assertEquals("Pick a category or who owes it", ledger.addSplit(dinner.id, 100, null, "  "))
+
+        val splits = ledger.observeSplitsFor(dinner.id).first()
+        assertEquals(setOf(coffee to null, null to "Sam"), splits.map { it.categoryId to it.owedBy }.toSet())
+        ledger.deleteSplit(splits.first().id)
+        assertEquals(1, ledger.observeSplitsFor(dinner.id).first().size)
+    }
+
+    @Test
     fun `category uses only cover the ranking window`() = runTest {
         ledger.saveQuickEntry(null, 100, groceries, cash, note = null)
         now = now.plus(Duration.ofDays(CategoryRanking.WINDOW_DAYS - 1))

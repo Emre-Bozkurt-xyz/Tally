@@ -43,6 +43,7 @@ abstract class TallyDatabase : RoomDatabase() {
     abstract fun ruleDao(): RuleDao
     abstract fun aliasDao(): AliasDao
     abstract fun tagDao(): TagDao
+    abstract fun splitDao(): SplitDao
 
     companion object {
         const val NAME = "tally.db"

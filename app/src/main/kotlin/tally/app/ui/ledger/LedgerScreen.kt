@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -41,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,6 +79,7 @@ fun LedgerScreen(
     onOpenRules: () -> Unit,
     onOpenSetup: () -> Unit,
     onOpenRawEvents: () -> Unit,
+    onOpenTransaction: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -92,7 +97,15 @@ fun LedgerScreen(
     val merchantNames = remember(merchants) { merchants.associate { it.id to it.name } }
     val accountNames = remember(accounts) { accounts.associate { it.id to it.name } }
     // The list is newest first and groupBy keeps first-seen order, so days stay newest first.
-    val days = remember(transactions) { transactions.orEmpty().groupBy { it.occurredAtLocal().toLocalDate() } }
+    val tags by remember { ledger.observeTags() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val tagLinks by remember { ledger.observeTagLinks() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    val shown = remember(transactions, tagLinks, tagFilter) {
+        val filter = tagFilter ?: return@remember transactions.orEmpty()
+        val tagged = tagLinks.filter { it.tagId == filter }.map { it.transactionId }.toSet()
+        transactions.orEmpty().filter { it.id in tagged }
+    }
+    val days = remember(shown) { shown.groupBy { it.occurredAtLocal().toLocalDate() } }
     val today = LocalDate.now()
     val inboxCount by remember { ledger.observeInboxCount() }.collectAsStateWithLifecycle(initialValue = 0)
 
@@ -143,6 +156,23 @@ fun LedgerScreen(
             return@Scaffold
         }
         LazyColumn(contentPadding = padding) {
+            if (tags.isNotEmpty()) {
+                item(key = "tags") {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        item { FilterChip(selected = tagFilter == null, onClick = { tagFilter = null }, label = { Text("All") }) }
+                        items(tags, key = { it.id }) { tag ->
+                            FilterChip(
+                                selected = tagFilter == tag.id,
+                                onClick = { tagFilter = if (tagFilter == tag.id) null else tag.id },
+                                label = { Text("#${tag.name}") },
+                            )
+                        }
+                    }
+                }
+            }
             days.forEach { (date, dayTransactions) ->
                 stickyHeader(key = date.toString()) {
                     DayHeader(
@@ -165,9 +195,7 @@ fun LedgerScreen(
                                 transaction.accountId?.let { accountNames[it] },
                                 TIME_FORMAT.format(transaction.occurredAtLocal()),
                             ).joinToString(" · "),
-                            onClick = {
-                                context.startActivity(QuickEntryActivity.intent(context, transactionId = transaction.id))
-                            },
+                            onClick = { onOpenTransaction(transaction.id) },
                         )
                     }
                 }

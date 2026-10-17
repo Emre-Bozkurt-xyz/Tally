@@ -16,6 +16,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getByIdIncludingDeleted(id: String): TransactionEntity?
 
+    @Query("SELECT * FROM transactions WHERE id = :id AND NOT deleted")
+    fun observeById(id: String): Flow<TransactionEntity?>
+
     /**
      * Captured (non-manual) transactions near a time, with the packages of the notifications
      * already attached. Includes deleted ones, so the second notification of an ignored

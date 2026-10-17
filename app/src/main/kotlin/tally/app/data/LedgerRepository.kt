@@ -8,6 +8,7 @@ import tally.core.entry.CategoryRanking
 import tally.core.entry.CategoryUse
 import tally.core.model.CategorySource
 import tally.core.model.Kind
+import tally.core.model.Money
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
 import java.time.Clock
@@ -38,6 +39,60 @@ class LedgerRepository(
 
     /** Bank and wallet notifications Tally couldn't read (say, RBC changed its wording). */
     fun observeUnreadNotifications(): Flow<List<RawEventEntity>> = db.rawEventDao().observeFailed(WatchedPackages.ALL)
+
+    fun observeTransaction(id: String): Flow<TransactionEntity?> = transactions.observeById(id)
+
+    /** The bank and wallet notifications a transaction was built from. */
+    fun observeNotificationsFor(transactionId: String): Flow<List<RawEventEntity>> =
+        db.rawEventDao().observeLinkedTo(transactionId)
+
+    // --- Tags ---
+
+    fun observeTags(): Flow<List<TagEntity>> = db.tagDao().observeActive()
+
+    fun observeTagLinks(): Flow<List<TransactionTagCrossRef>> = db.tagDao().observeLinks()
+
+    fun observeTagsFor(transactionId: String): Flow<List<TagEntity>> = db.tagDao().observeFor(transactionId)
+
+    /** Tags a transaction, creating the tag if it's new. Returns an error, or null. */
+    suspend fun addTag(transactionId: String, name: String): String? {
+        val trimmed = name.trim().removePrefix("#")
+        if (trimmed.isEmpty()) return "Enter a tag"
+        if (',' in trimmed) return "Tags can't contain commas"
+        val now = clock.millis()
+        val tags = db.tagDao()
+        val tag = tags.findByName(trimmed) ?: TagEntity(UUID.randomUUID().toString(), trimmed, now).also { tags.upsert(it) }
+        tags.link(TransactionTagCrossRef(transactionId, tag.id, now))
+        return null
+    }
+
+    suspend fun removeTag(transactionId: String, tagId: String) = db.tagDao().unlink(transactionId, tagId, clock.millis())
+
+    // --- Splits ---
+
+    fun observeSplitsFor(transactionId: String): Flow<List<SplitEntity>> = db.splitDao().observeFor(transactionId)
+
+    fun observeAllSplits(): Flow<List<SplitEntity>> = db.splitDao().observeAll()
+
+    /**
+     * Splits off part of a purchase: into another category, or as money [owedBy] someone.
+     * Parts can't add up to more than the purchase. Returns an error, or null.
+     */
+    suspend fun addSplit(transactionId: String, amountCents: Long, categoryId: String?, owedBy: String?): String? {
+        val transaction = transactions.getById(transactionId) ?: return "That transaction no longer exists"
+        if (transaction.amountCents <= 0) return "Only purchases can be split"
+        if (amountCents <= 0) return "Enter an amount"
+        val owed = owedBy?.trim()?.ifEmpty { null }
+        if (owed == null && categoryId == null) return "Pick a category or who owes it"
+        val used = db.splitDao().getFor(transactionId).sumOf { it.amountCents }
+        if (used + amountCents > transaction.amountCents) {
+            return "Only ${Money.format(transaction.amountCents - used)} left to split"
+        }
+        db.splitDao().upsert(SplitEntity(UUID.randomUUID().toString(), transactionId, amountCents, categoryId.takeIf { owed == null }, owed, clock.millis()))
+        return null
+    }
+
+    suspend fun deleteSplit(id: String) = db.splitDao().delete(id, clock.millis())
 
     /** How many things wait in the inbox. */
     fun observeInboxCount(): Flow<Int> =

@@ -49,12 +49,10 @@ import tally.app.data.CategoryEntity
 import tally.app.data.LedgerRepository
 import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
-import tally.app.ui.ledger.occurredAtLocal
+import tally.app.ui.ledger.ledgerEntries
 import tally.app.ui.theme.DarkColors
 import tally.app.ui.theme.LightColors
-import tally.core.model.Kind
 import tally.core.model.Money
-import tally.core.report.LedgerEntry
 import tally.core.report.WeekSpend
 import java.time.LocalDate
 import java.time.ZoneId
@@ -100,9 +98,8 @@ class QuickAddWidget : GlanceAppWidget() {
                 val firstDay = WeekFields.of(Locale.getDefault()).firstDayOfWeek
                 // A day of slack covers transactions logged in other time zones.
                 val since = today.minusDays(8).atStartOfDay(ZoneId.systemDefault()).toInstant()
-                val entries = ledger.transactionsSince(since).map {
-                    LedgerEntry(it.amountCents, Kind.valueOf(it.kind), it.categoryId, it.occurredAtLocal().toLocalDate())
-                }
+                val splits = ledger.observeAllSplits().first().groupBy { it.transactionId }
+                val entries = ledger.transactionsSince(since).flatMap { it.ledgerEntries(splits[it.id].orEmpty()) }
                 val categories = ledger.observeCategories().first()
                 val week = WeekSpend.of(
                     entries = entries,

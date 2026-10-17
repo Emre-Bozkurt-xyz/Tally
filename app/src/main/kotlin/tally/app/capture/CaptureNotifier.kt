@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import tally.app.MainActivity
 import tally.app.R
 import tally.app.data.CapturePipeline
 import tally.app.quickentry.QuickEntryActivity
@@ -68,6 +69,17 @@ object CaptureNotifier {
                 if (captured.categoryName != null) action(context, CaptureActionReceiver.ACTION_CONFIRM, transaction.id) else change,
             )
             .addAction(0, "Change", change)
+            .addAction(
+                0,
+                "Split",
+                PendingIntent.getActivity(
+                    context,
+                    0,
+                    MainActivity.transactionIntent(context, transaction.id)
+                        .setData("tally://capture/${transaction.id}/split".toUri()),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                ),
+            )
             .addAction(0, "Ignore", action(context, CaptureActionReceiver.ACTION_IGNORE, transaction.id))
             .build()
         NotificationManagerCompat.from(context).notify(transaction.id, NOTIFICATION_ID, notification)

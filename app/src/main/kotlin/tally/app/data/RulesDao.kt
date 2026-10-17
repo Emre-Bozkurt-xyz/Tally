@@ -41,6 +41,46 @@ interface TagDao {
 
     @Upsert
     suspend fun link(crossRef: TransactionTagCrossRef)
+
+    @Query("UPDATE transaction_tags SET deleted = 1, updatedAt = :now WHERE transactionId = :transactionId AND tagId = :tagId")
+    suspend fun unlink(transactionId: String, tagId: String, now: Long)
+
+    @Query("SELECT * FROM tags WHERE NOT deleted ORDER BY name COLLATE NOCASE")
+    fun observeActive(): Flow<List<TagEntity>>
+
+    /** Every live transaction-tag link, for filtering the ledger. */
+    @Query("SELECT * FROM transaction_tags WHERE NOT deleted")
+    fun observeLinks(): Flow<List<TransactionTagCrossRef>>
+
+    @Query(
+        """
+        SELECT t.* FROM tags t JOIN transaction_tags x ON x.tagId = t.id
+        WHERE x.transactionId = :transactionId AND NOT x.deleted AND NOT t.deleted
+        ORDER BY t.name COLLATE NOCASE
+        """,
+    )
+    fun observeFor(transactionId: String): Flow<List<TagEntity>>
+}
+
+@Dao
+interface SplitDao {
+    @Upsert
+    suspend fun upsert(split: SplitEntity)
+
+    @Query("SELECT * FROM splits WHERE transactionId = :transactionId AND NOT deleted")
+    suspend fun getFor(transactionId: String): List<SplitEntity>
+
+    @Query("SELECT * FROM splits WHERE transactionId = :transactionId AND NOT deleted")
+    fun observeFor(transactionId: String): Flow<List<SplitEntity>>
+
+    @Query("SELECT * FROM splits WHERE NOT deleted")
+    fun observeAll(): Flow<List<SplitEntity>>
+
+    @Query("SELECT * FROM splits WHERE NOT deleted")
+    suspend fun getAll(): List<SplitEntity>
+
+    @Query("UPDATE splits SET deleted = 1, updatedAt = :now WHERE id = :id")
+    suspend fun delete(id: String, now: Long)
 }
 
 fun RuleEntity.toRule() = Rule(

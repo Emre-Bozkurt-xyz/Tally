@@ -29,6 +29,9 @@ interface RawEventDao {
     @Query("SELECT * FROM raw_events WHERE transactionId = :transactionId")
     suspend fun linkedTo(transactionId: String): List<RawEventEntity>
 
+    @Query("SELECT * FROM raw_events WHERE transactionId = :transactionId ORDER BY postedAt")
+    fun observeLinkedTo(transactionId: String): Flow<List<RawEventEntity>>
+
     /** Watched-package events not yet turned into a transaction, oldest first (for re-parse). */
     @Query(
         """

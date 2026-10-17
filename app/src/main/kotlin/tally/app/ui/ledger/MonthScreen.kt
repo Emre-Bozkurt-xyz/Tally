@@ -32,10 +32,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tally.app.data.LedgerRepository
-import tally.core.model.Kind
 import tally.core.model.Money
 import tally.core.report.CategoryTotal
-import tally.core.report.LedgerEntry
 import tally.core.report.MonthSummary
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -55,10 +53,10 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
     val categories by remember { ledger.observeAllCategories() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val byId = remember(categories) { categories.associateBy { it.id } }
-    val summary = remember(transactions, byId, month) {
-        val entries = transactions.map {
-            LedgerEntry(it.amountCents, Kind.valueOf(it.kind), it.categoryId, it.occurredAtLocal().toLocalDate())
-        }
+    val splits by remember { ledger.observeAllSplits() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val summary = remember(transactions, splits, byId, month) {
+        val splitsByTransaction = splits.groupBy { it.transactionId }
+        val entries = transactions.flatMap { it.ledgerEntries(splitsByTransaction[it.id].orEmpty()) }
         MonthSummary.of(month, entries) { id -> byId[id]?.parentId }
     }
     fun nameOf(total: CategoryTotal) = total.categoryId?.let { byId[it]?.name } ?: "Uncategorized"

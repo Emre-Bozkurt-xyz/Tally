@@ -1,6 +1,7 @@
 package tally.app.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -16,11 +17,13 @@ import tally.app.ui.rules.AliasesScreen
 import tally.app.ui.rules.RulesScreen
 import tally.app.ui.rules.TomlEditorScreen
 import tally.app.ui.setup.SetupScreen
+import tally.app.ui.transaction.TransactionScreen
 import tally.core.model.ParseStatus
 
 private object Routes {
     const val LEDGER = "ledger"
     const val INBOX = "inbox"
+    const val TRANSACTION = "transactions/{id}"
     const val MONTH = "month"
     const val CATEGORIES = "categories"
     const val RULES = "rules"
@@ -31,11 +34,17 @@ private object Routes {
     const val SETUP = "setup"
 
     fun rawEvent(id: String) = "raw-events/$id"
+
+    fun transaction(id: String) = "transactions/$id"
 }
 
 @Composable
-fun TallyNavHost(container: AppContainer) {
+fun TallyNavHost(container: AppContainer, openTransactionId: String? = null) {
     val nav = rememberNavController()
+    // Opened from a capture notification's Split action.
+    LaunchedEffect(openTransactionId) {
+        openTransactionId?.let { nav.navigate(Routes.transaction(it)) }
+    }
     NavHost(navController = nav, startDestination = Routes.LEDGER) {
         composable(Routes.LEDGER) {
             LedgerScreen(
@@ -46,6 +55,16 @@ fun TallyNavHost(container: AppContainer) {
                 onOpenRules = { nav.navigate(Routes.RULES) },
                 onOpenSetup = { nav.navigate(Routes.SETUP) },
                 onOpenRawEvents = { nav.navigate(Routes.RAW_EVENTS) },
+                onOpenTransaction = { nav.navigate(Routes.transaction(it)) },
+            )
+        }
+        composable(Routes.TRANSACTION) { entry ->
+            TransactionScreen(
+                id = entry.arguments?.getString("id").orEmpty(),
+                ledger = container.ledger,
+                rules = container.rules,
+                onOpenRawEvent = { nav.navigate(Routes.rawEvent(it)) },
+                onBack = { nav.popBackStack() },
             )
         }
         composable(Routes.INBOX) {
