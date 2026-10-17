@@ -22,6 +22,7 @@ class Snapshot(
     links: List<TransactionTagRow>,
     categories: List<CategoryRow>,
     accounts: List<AccountRow>,
+    identifiers: List<AccountIdentifierRow> = emptyList(),
     merchants: List<MerchantRow>,
     val aliases: List<AliasRow>,
     val rules: List<RuleRow>,
@@ -45,6 +46,8 @@ class Snapshot(
         }
     }
     val accounts = accounts.filter { !it.deleted }.sortedBy { it.name }
+    /** Last-4 to account, learned on the phone from captures. */
+    val accountByLast4: Map<String, String> = identifiers.filter { !it.deleted }.associate { it.last4 to it.accountId }
     val tags = tags.filter { !it.deleted }.sortedBy { it.name.lowercase() }
     val tagsByTransaction: Map<String, List<TagRow>> = links.filter { !it.deleted }
         .groupBy({ it.transactionId }) { tagsById[it.tagId] }
@@ -93,6 +96,7 @@ class Snapshot(
                 links = read(Rows.transactionTags),
                 categories = read(Rows.categories),
                 accounts = read(Rows.accounts),
+                identifiers = read(Rows.accountIdentifiers),
                 merchants = read(Rows.merchants),
                 aliases = read(Rows.aliases),
                 rules = read(Rows.rules),

@@ -1,6 +1,7 @@
 package tally.app.ui.rawevents
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -62,6 +66,31 @@ fun RawEventsScreen(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var exporting by remember { mutableStateOf(false) }
+    var exportMenu by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+    val watchedCount = events.count { it.source in WatchedPackages.ALL }
+    val otherCount = events.size - watchedCount
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear $otherCount notifications?") },
+            text = {
+                Text(
+                    "Deletes everything recorded from apps other than RBC and the wallets (what " +
+                        "\"Log all packages\" collects). Bank and wallet notifications are kept. " +
+                        "Turn off \"Log all packages\" in Setup to stop collecting them.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClear = false
+                    scope.launch { snackbar.showSnackbar("Cleared ${repository.deleteUnwatched()} notifications") }
+                }) { Text("Clear", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+        )
+    }
     var reparsing by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -69,24 +98,44 @@ fun RawEventsScreen(
             TopAppBar(
                 title = { Text("Raw events (${events.size})") },
                 actions = {
-                    IconButton(
-                        enabled = events.isNotEmpty() && !exporting,
-                        onClick = {
-                            scope.launch {
-                                exporting = true
-                                try {
-                                    shareJson(context, exportRawEvents(context, repository))
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    snackbar.showSnackbar("Export failed: ${e.message}")
-                                } finally {
-                                    exporting = false
-                                }
+                    fun export(everything: Boolean) {
+                        exportMenu = false
+                        scope.launch {
+                            exporting = true
+                            try {
+                                shareJson(context, exportRawEvents(context, repository, everything))
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                snackbar.showSnackbar("Export failed: ${e.message}")
+                            } finally {
+                                exporting = false
                             }
-                        },
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = "Export as JSON")
+                        }
+                    }
+                    Box {
+                        IconButton(enabled = events.isNotEmpty() && !exporting, onClick = { exportMenu = true }) {
+                            Icon(Icons.Default.Share, contentDescription = "Export or clear")
+                        }
+                        DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Export bank & wallet ($watchedCount)") },
+                                onClick = { export(everything = false) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export everything (${events.size})") },
+                                onClick = { export(everything = true) },
+                            )
+                            if (otherCount > 0) {
+                                DropdownMenuItem(
+                                    text = { Text("Clear other apps ($otherCount)", color = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        exportMenu = false
+                                        confirmClear = true
+                                    },
+                                )
+                            }
+                        }
                     }
                     IconButton(
                         enabled = !reparsing,

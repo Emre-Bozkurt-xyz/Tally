@@ -31,7 +31,7 @@ class RowsSchemaTest {
         }
         val types = listOf(
             Rows.transactions, Rows.splits, Rows.tags, Rows.transactionTags, Rows.categories,
-            Rows.accounts, Rows.merchants, Rows.aliases, Rows.rules,
+            Rows.accounts, Rows.accountIdentifiers, Rows.merchants, Rows.aliases, Rows.rules,
         )
         for (type in types) {
             val descriptor = type.serializer.descriptor

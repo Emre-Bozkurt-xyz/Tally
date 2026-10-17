@@ -72,6 +72,9 @@ data class AccountRow(
 )
 
 @Serializable
+data class AccountIdentifierRow(val id: String, val accountId: String, val last4: String, val updatedAt: Long, val deleted: Boolean = false)
+
+@Serializable
 data class MerchantRow(
     val id: String,
     val name: String,
@@ -134,6 +137,7 @@ object Rows {
     )
     val categories = RowType("categories", CategoryRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
     val accounts = RowType("accounts", AccountRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
+    val accountIdentifiers = RowType("account_identifiers", AccountIdentifierRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
     val merchants = RowType("merchants", MerchantRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
     val aliases = RowType("aliases", AliasRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
     val rules = RowType("rules", RuleRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })

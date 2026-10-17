@@ -4,7 +4,12 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.html.respondHtml
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveParameters
+import io.ktor.utils.io.readRemaining
+import kotlinx.io.readByteArray
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -18,7 +23,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 
 /** The dashboard: Overview, Ledger, Inbox and Rules. Mounted behind Cloudflare Access. */
-fun Route.dashboard(edits: WebEdits, zone: ZoneId, clock: Clock) {
+fun Route.dashboard(edits: WebEdits, statements: StatementImport, zone: ZoneId, clock: Clock) {
     fun today() = LocalDate.now(clock.withZone(zone))
     suspend fun snapshot() = withContext(Dispatchers.IO) { edits.snapshot() }
 
@@ -52,6 +57,37 @@ fun Route.dashboard(edits: WebEdits, zone: ZoneId, clock: Clock) {
     get("/rules") {
         val s = snapshot()
         call.respondHtml { page("Rules", Tab.RULES, s, call.caller().name) { rules(s, edits.exportToml(s)) } }
+    }
+
+    get("/statements") {
+        val s = snapshot()
+        call.respondHtml { page("Statements", Tab.STATEMENTS, s, call.caller().name) { statements() } }
+    }
+
+    edit("/statements/preview") {
+        var pdf: ByteArray? = null
+        receiveMultipart(formFieldLimit = MAX_PDF_BYTES).forEachPart { part ->
+            if (part is PartData.FileItem && part.name == "pdf") pdf = part.provider().readRemaining().readByteArray()
+            part.dispose()
+        }
+        val bytes = pdf?.takeIf { it.isNotEmpty() } ?: return@edit html(statementErrorHtml("Pick a PDF first."))
+        val token = withContext(Dispatchers.IO) { runCatching { statements.read(bytes) }.getOrNull() }
+            ?: return@edit html(statementErrorHtml("That isn't an RBC statement Tally can read (chequing or credit card PDF)."))
+        val s = snapshot()
+        val statement = statements.statement(token)!!
+        html(statementPreviewHtml(s, token, statements.plan(s, statement, statements.guessAccount(s, statement))))
+    }
+
+    edit("/statements/{id}/preview") { token ->
+        val accountId = receiveParameters()["account"]?.takeIf { it.isNotBlank() }
+        val statement = statements.statement(token) ?: return@edit html(statementImportedHtml(null))
+        val s = snapshot()
+        html(statementPreviewHtml(s, token, statements.plan(s, statement, accountId?.takeIf { id -> s.accounts.any { it.id == id } })))
+    }
+
+    edit("/statements/{id}/import") { token ->
+        val accountId = receiveParameters()["account"].orEmpty()
+        html(statementImportedHtml(withContext(Dispatchers.IO) { statements.commit(token, accountId, source()) }))
     }
 
     edit("/ledger/{id}/category") { id ->
@@ -111,5 +147,7 @@ private fun ApplicationCall.source(): String =
     request.headers["X-Tally-Source"]?.takeIf { it.matches(SOURCE) } ?: WebEdits.WEB
 
 private val SOURCE = Regex("web-[A-Za-z0-9]{1,32}")
+
+private const val MAX_PDF_BYTES = 20L * 1024 * 1024
 
 private suspend fun ApplicationCall.html(fragment: String) = respondText(fragment, ContentType.Text.Html)

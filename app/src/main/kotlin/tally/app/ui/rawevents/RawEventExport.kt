@@ -13,11 +13,11 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** Writes all raw events to a JSON file in the cache and returns a shareable content URI. */
-suspend fun exportRawEvents(context: Context, repository: RawEventRepository): Uri =
+/** Writes raw events to a JSON file in the cache and returns a shareable content URI. */
+suspend fun exportRawEvents(context: Context, repository: RawEventRepository, everything: Boolean): Uri =
     withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        val json = repository.exportJson(now)
+        val json = repository.exportJson(now, everything)
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
         // Only the latest export is kept around.
         dir.listFiles()?.forEach { it.delete() }

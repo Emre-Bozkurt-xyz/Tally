@@ -46,8 +46,13 @@ class RawEventRepository(private val dao: RawEventDao) {
      */
     suspend fun deleteUnwatched(): Int = dao.deleteSourcesNotIn(WatchedPackages.ALL)
 
-    suspend fun exportJson(nowMs: Long): String {
-        val events = dao.getAll().map { it.toExported() }
+    /**
+     * The events as export JSON. [everything] includes other apps' notifications (for finding
+     * a new payment app's package); otherwise only bank and wallet ones, which keeps the file
+     * small and free of private messages.
+     */
+    suspend fun exportJson(nowMs: Long, everything: Boolean = false): String {
+        val events = dao.getAll().filter { everything || it.source in WatchedPackages.ALL }.map { it.toExported() }
         return RawEventExportCodec.encode(RawEventExport(exportedAt = nowMs, events = events))
     }
 

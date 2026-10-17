@@ -45,10 +45,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import tally.core.model.CategorySource
+import tally.core.model.Kind
 import tally.core.model.Money
 import tally.core.model.TransactionStatus
 import tally.core.report.BudgetStatus
 import tally.core.rules.TomlImport
+import tally.core.statement.StatementKind
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -64,7 +66,9 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEE MMM d", Locale.CANADA)
 private val monthFormat = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.CANADA)
 private val shortMonth = DateTimeFormatter.ofPattern("MMM", Locale.CANADA)
 
-enum class Tab(val path: String, val label: String) { OVERVIEW("/", "Overview"), LEDGER("/ledger", "Ledger"), INBOX("/inbox", "Inbox"), RULES("/rules", "Rules") }
+enum class Tab(val path: String, val label: String) {
+    OVERVIEW("/", "Overview"), LEDGER("/ledger", "Ledger"), INBOX("/inbox", "Inbox"), RULES("/rules", "Rules"), STATEMENTS("/statements", "Statements"),
+}
 
 fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean = false, content: FlowContent.() -> Unit) {
     head {
@@ -79,7 +83,7 @@ fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean
         // This page's id: its HTMX edits send it back, so it can tell its own changes from others'.
         val source = "web-" + java.util.UUID.randomUUID().toString().replace("-", "").take(12)
         attributes["data-source"] = source
-        attributes["data-live"] = if (tab == Tab.RULES) "banner" else "auto"
+        attributes["data-live"] = if (tab == Tab.RULES || tab == Tab.STATEMENTS) "banner" else "auto"
         attributes["hx-headers"] = """{"X-Tally-Source":"$source"}"""
         header {
             a(href = "/", classes = "brand") { +"Tally" }
@@ -381,6 +385,151 @@ fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow) {
 
 fun inboxDoneHtml(message: String): String = createHTML().div("item done") { +message }
 
+// ---------- Statements ----------
+
+fun FlowContent.statements() {
+    h1 { +"Statements" }
+    p("muted") {
+        +"Upload an RBC statement PDF (chequing or credit card). Tally checks it against what it captured: "
+        +"matching purchases take the statement's final amount, ones it never saw are added "
+        +"(to the inbox unless a rule or merchant memory knows the category), and anything missing from the statement is listed. "
+        +"You see all of it before anything is saved. Importing the same statement twice changes nothing."
+    }
+    form(classes = "upload") {
+        attributes["hx-post"] = "/statements/preview"
+        attributes["hx-encoding"] = "multipart/form-data"
+        attributes["hx-target"] = "#statement"
+        input(InputType.file, name = "pdf") {
+            accept = "application/pdf"
+            required = true
+        }
+        button(classes = "primary") { +"Read statement" }
+    }
+    div { id = "statement" }
+}
+
+fun statementPreviewHtml(s: Snapshot, token: String, plan: ImportPlan): String = createHTML().div {
+    val st = plan.statement
+    val kind = if (st.kind == StatementKind.CREDIT_CARD) "Credit card" else "Chequing"
+    h2 { +"$kind ••${st.last4}, ${st.from.format(dayFormat)} to ${st.to.format(dayFormat)}, ${st.to.year}" }
+    if (st.problems.isNotEmpty()) {
+        div("result error") {
+            +"This statement doesn't add up the way Tally read it; check the rows before importing:"
+            st.problems.forEach { div { +it } }
+        }
+    }
+    form(classes = "filters") {
+        label {
+            +"Account"
+            select {
+                name = "account"
+                attributes["hx-post"] = "/statements/$token/preview"
+                attributes["hx-target"] = "#statement"
+                attributes["hx-trigger"] = "change"
+                if (plan.accountId == null) option { value = ""; selected = true; +"Pick the account…" }
+                s.accounts.forEach { a -> option { value = a.id; selected = a.id == plan.accountId; +a.name } }
+            }
+        }
+        if (plan.accountId != null) {
+            button(classes = "primary") {
+                attributes["hx-post"] = "/statements/$token/import"
+                attributes["hx-target"] = "#statement"
+                val updates = plan.matched.count { it.updated != null }
+                attributes["hx-confirm"] = "Add ${plan.added.size} new transactions and update $updates matched ones?"
+                +"Import"
+            }
+        }
+    }
+    div("cards") {
+        statCard("New", plan.added.size, "${plan.added.count { it.transaction.status == TransactionStatus.CAPTURED.name }} to review")
+        val changed = plan.matched.count { m -> m.updated != null && m.updated.amountCents != m.transaction.amountCents }
+        statCard("Matched", plan.matched.size, "$changed amounts change")
+        statCard("Missing from statement", plan.missing.size, null)
+        if (plan.alreadyImported > 0) statCard("Already imported", plan.alreadyImported, null)
+    }
+    if (plan.added.isNotEmpty()) {
+        h2 { +"New" }
+        table("compact") {
+            tbody {
+                plan.added.forEach { a ->
+                    tr(if (a.transaction.status == TransactionStatus.CAPTURED.name) "captured" else null) {
+                        td("nowrap") { +a.line.date.format(dayFormat) }
+                        td { +(a.merchant?.name ?: a.transaction.merchantId?.let { s.merchantsById[it]?.name } ?: a.line.merchant) }
+                        td("muted") {
+                            +when {
+                                a.transaction.kind != Kind.EXPENSE.name -> a.transaction.kind.lowercase()
+                                a.transaction.categoryId != null -> s.label(a.transaction.categoryId)
+                                else -> "to review"
+                            }
+                        }
+                        td("num") { +signed(a.line.amountCents) }
+                    }
+                }
+            }
+        }
+    }
+    if (plan.matched.isNotEmpty()) {
+        h2 { +"Matched" }
+        table("compact") {
+            tbody {
+                plan.matched.forEach { m ->
+                    tr {
+                        td("nowrap") { +m.line.date.format(dayFormat) }
+                        td { +m.line.merchant }
+                        td("muted") { +"${s.merchantName(m.transaction)} · ${s.date(m.transaction).format(dayFormat)}" }
+                        td("num") {
+                            if (m.line.amountCents != m.transaction.amountCents) span("muted") { +"${signed(m.transaction.amountCents)} → " }
+                            +signed(m.line.amountCents)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (plan.missing.isNotEmpty()) {
+        h2 { +"In Tally, not on the statement" }
+        p("muted") { +"Maybe a different account, a duplicate, or a purchase that was cancelled. Nothing changes for these." }
+        table("compact") {
+            tbody {
+                plan.missing.forEach { t ->
+                    tr {
+                        td("nowrap") { +s.date(t).format(dayFormat) }
+                        td { +s.merchantName(t) }
+                        td("num") { +signed(t.amountCents) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun statementImportedHtml(plan: ImportPlan?): String = createHTML().div {
+    if (plan == null) {
+        classes = setOf("result", "error")
+        +"That statement expired or the account is gone; upload it again."
+        return@div
+    }
+    classes = setOf("result", "ok")
+    val review = plan.added.count { it.transaction.status == TransactionStatus.CAPTURED.name }
+    +"Imported: ${plan.added.size} new ($review in the inbox), ${plan.matched.count { it.updated != null }} matched transactions updated."
+    if (review > 0) {
+        +" "
+        a(href = "/inbox") { +"Open the inbox" }
+    }
+}
+
+fun statementErrorHtml(message: String): String = createHTML().div("result error") { +message }
+
+private fun FlowContent.statCard(label: String, count: Int, sub: String?) {
+    div("card") {
+        div("label") { +label }
+        div("value") { +"$count" }
+        sub?.let { div("sub") { +it } }
+    }
+}
+
+private fun signed(cents: Long) = if (cents < 0) "+${Money.format(-cents)}" else Money.format(cents)
+
 // ---------- Rules ----------
 
 fun FlowContent.rules(s: Snapshot, toml: String) {
@@ -557,6 +706,7 @@ button.quiet { color:var(--muted); }
 .toml .actions { display:flex; gap:.5rem; align-items:flex-start; margin:.5rem 0 1.5rem; flex-wrap:wrap; }
 .result { padding:.35rem .6rem; border-radius:6px; }
 .result.ok { color:var(--good); } .result.error { color:var(--over); }
+.upload { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; }
 .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size:.88rem; }
 table.compact td { padding:.35rem .4rem; }
 @media (max-width: 640px) {

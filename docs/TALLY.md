@@ -19,7 +19,7 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase 3: rules and inbox | Built: rules engine + TOML file (own parser, errors by line), rules / TOML / aliases screens, review inbox with swipe actions and "always do this", transaction detail with tags and splits. Installed; the "done when" check needs a few weeks of real use. |
 | Phase 6: budgets and insights | Built: budgets (categories dialog; month view and widget with 80% / 100% colors), Stats (6-month chart, net per month, top merchants), Subscriptions (detected), Owed to me (settle / undo). |
 | Phase 4: server | Step 1 built: `server/` (Ktor, Postgres, Flyway, Cloudflare Access JWT check), Dockerfile, production compose, deploy/backup scripts, GitHub workflow, `docs/DEPLOYMENT.md`. Image built and run locally against Postgres (health, migrations, 401 without Access). Step 2 built: sync (`POST /api/sync`, `sync_rows` JSONB store, app `SyncClient` + `SyncWorker` + Sync screen), tested two-phone end to end in-process and the store against real Postgres. Server deployed and reachable through Access (2026-10-17). Step 3 built: LLM category suggestions (`POST /api/categorize`, Claude Haiku, cached per merchant in Postgres; the phone asks before each sync). Step 4 built: web dashboard (Overview, Ledger, Inbox, Rules) at `/`. The phone clears notifications for captures handled on the web and re-applies aliases pulled from it. Verified on the phone and server 2026-10-17: sync both ways, dashboard edits, live updates (category changes instant, new entries within seconds). Not yet tried: a wipe-and-reinstall restore. |
-| Phase 5 | Not started; needs a real RBC CSV. |
+| Phase 5: statements | Built: RBC PDF statements (chequing and Visa) imported on the dashboard: read, checked against their totals, matched to captures, the rest added. Real statements read and add up. Not yet imported for real. |
 
 What's verified so far:
 - `./gradlew :core:test`: 119 tests passing (budgets, trends, subscriptions, amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures, merchant cleanup, dedupe, categorizer, rules engine, rules TOML, splits).
@@ -616,23 +616,26 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 ---
 
-### Phase 5 (M5): Statement reconciliation (1 weekend)
+### Phase 5 (M5): Statement reconciliation (built 2026-10-17)
 
 **Goal:** a monthly sanity check that catches anything the alerts missed and corrects pending amounts.
 
-- [ ] `RbcCsvReader` in `core`: parse RBC's CSV export (reuse `Amounts.parseCents`). Check whether it has a stable transaction ID column; if yes, store it on matched transactions and use it to make re-imports idempotent.
-- [ ] `StatementMatcher`: for each statement row, score candidates on the same account:
-  - Date within 3 days (score falls off with distance).
-  - Amount: exact = full score; within 25% for categories tagged "variable" (restaurants, gas: tips and pre-auth holds) = partial.
-  - Merchant similarity after normalization (token overlap or Jaro-Winkler).
-  - Greedy assignment by best score, one-to-one.
-- [ ] Outcomes:
-  - Match: set `status = RECONCILED`, adopt the statement's final amount, keep your category.
-  - Statement row with no match: create a transaction (`source = CSV`), categorize, send to inbox.
-  - Your transaction with no match and older than 7 days: inbox flag.
-  - Refund rows: link to the original purchase where merchant + amount match.
-- [ ] Import UI: on phone (Storage Access Framework file picker) and on web (upload). Show a summary before committing: N matched, N new, N flagged.
-- [ ] Golden tests with a sanitized real CSV.
+RBC's monthly **PDF** statements are the input (they arrive anyway; no CSV download step). Reading happens on the server, so the import lives on the dashboard; the phone gets the result through sync.
+
+- [x] `RbcStatements` in `core` reads the text PDFBox extracts (sorted by position) from both layouts:
+  - Chequing: rows span lines (type line, merchant line with amount and maybe a balance), dates carry over, page breaks repeat the letterhead. The text doesn't say which column an amount was in, so the signs come from the running balance: within each run of rows ending in a printed balance, the withdrawal/deposit split that adds up, ties broken by the description ("refund", "Autodeposit"...). Checked against the statement's total deposits and withdrawals.
+  - Credit card: one line per row (`MMM DD MMM DD description $amount`, sidebar text after it), reference and foreign-currency lines skipped, years worked out across New Year. Checked against "Purchases & debits" and "Payments & credits".
+  - Kinds: purchases EXPENSE; refunds and corrections negative EXPENSE; deposits INCOME; card payments TRANSFER.
+  - A statement that doesn't add up still imports, with the problems shown in the preview.
+- [x] `StatementMatcher` (`core`): same amount (or within 25% when the merchant clearly agrees: tips, holds), date within 5 days before to 1 day after the statement's date (chequing dates are posting dates), merchant similarity as the tiebreak (shared words, or a word inside squashed bank text: "DOORDASHWENDYS" has "wendys"). Best pairs first, one to one.
+- [x] Import (`server/web/StatementImport`, dashboard Statements page): upload, preview, import.
+  - Account: from a last-4 the phone learned (`account_identifiers`), else by name (Visa/credit vs chequing), else you pick.
+  - Matched: takes the statement's amount; CONFIRMED becomes RECONCILED (captures still in the inbox stay CAPTURED); an unknown account is filled in.
+  - New rows: `source = CSV`, dated noon on the statement date, merchant through your aliases, categorized by rules then merchant memory (trusted or rule: confirmed; otherwise to the inbox). With an LLM configured, suggestions for the rest arrive in the background after the import. Income and transfers are confirmed with the description as the note.
+  - Missing: transactions on that account in the period the statement doesn't have are listed (not changed).
+  - Ids of new rows come from the statement row (kind, last 4, date, amount, description, occurrence), so importing the same statement again adds nothing.
+- [x] Tests: made-up statements in the real layouts (`RbcStatementsTest`: page breaks, sign solving, New Year, refunds, corrections), `StatementMatcherTest`, `StatementImportTest` (preview, import, re-import, upload route). `RealStatementsTest` reads real PDFs from `TALLY_STATEMENTS_DIR` (never committed) and checks they add up: the first two (chequing 34 rows, Visa 30 rows) do.
+- [ ] Not done: refunds aren't linked to their purchase (they net out by merchant); e-Transfer deposits aren't matched to "owed to me" splits.
 
 **Done when:** importing a month's statement produces zero surprises you can't explain from the inbox.
 
