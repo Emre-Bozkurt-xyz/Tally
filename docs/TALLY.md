@@ -635,7 +635,10 @@ RBC's monthly **PDF** statements are the input (they arrive anyway; no CSV downl
   - Missing: transactions on that account in the period the statement doesn't have are listed (not changed).
   - Ids of new rows come from the statement row (kind, last 4, date, amount, description, occurrence), so importing the same statement again adds nothing.
 - [x] Tests: made-up statements in the real layouts (`RbcStatementsTest`: page breaks, sign solving, New Year, refunds, corrections), `StatementMatcherTest`, `StatementImportTest` (preview, import, re-import, upload route). `RealStatementsTest` reads real PDFs from `TALLY_STATEMENTS_DIR` (never committed) and checks they add up: the first two (chequing 34 rows, Visa 30 rows) do.
-- [ ] Not done: refunds aren't linked to their purchase (they net out by merchant); e-Transfer deposits aren't matched to "owed to me" splits.
+- [x] Money to and from people (e-Transfers): the sender is the merchant (reference code stripped), and it always goes to the inbox. Rules with `ask = true` (TOML; `rules.ask`, schema v7) are defaults you accept with one tap; merchant memory of a person suggests but never files (`Categorizer(trustMemory = false)`); a plain rule still files automatically (for income that's always the same: "Canada" -> Income/Government, payroll).
+- [x] What money in means comes from the category (`CategoryKinds`): under the top-level category named "Income" it's INCOME; under a spending category it's money back (a negative EXPENSE lowering that category, like a refund). Set wherever you pick a category (phone, dashboard, import).
+- [x] Owed to me: money in whose sender and amount match an open owed part (`OwedMatch`: same amount, first name or full name agrees) is offered as "Settles Danya's $31.00" in both inboxes (swipe right on the phone, Settle on the web): the part is settled and the money becomes a TRANSFER (the owed part never counted as spending).
+- [ ] Not done: refunds aren't linked to their purchase (they net out by merchant); RBC e-Transfer notifications aren't parsed yet (need an export).
 
 **Done when:** importing a month's statement produces zero surprises you can't explain from the inbox.
 

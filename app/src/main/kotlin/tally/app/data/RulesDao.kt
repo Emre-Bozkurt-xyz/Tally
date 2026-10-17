@@ -83,6 +83,12 @@ interface SplitDao {
     @Query("SELECT * FROM splits WHERE owedBy IS NOT NULL AND NOT deleted")
     fun observeOwed(): Flow<List<SplitEntity>>
 
+    @Query("SELECT * FROM splits WHERE id = :id")
+    suspend fun getById(id: String): SplitEntity?
+
+    @Query("SELECT * FROM splits WHERE owedBy IS NOT NULL AND NOT deleted ORDER BY updatedAt")
+    suspend fun getOwed(): List<SplitEntity>
+
     @Query("UPDATE splits SET settledAt = :settledAt, updatedAt = :now WHERE id = :id")
     suspend fun setSettled(id: String, settledAt: Long?, now: Long)
 
@@ -99,6 +105,7 @@ fun RuleEntity.toRule() = Rule(
     accountId = accountId,
     categoryId = categoryId,
     tags = tagsCsv.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() },
+    ask = ask,
 )
 
 /** Null if the stored pattern is invalid (it can't be saved that way, but stay safe). */

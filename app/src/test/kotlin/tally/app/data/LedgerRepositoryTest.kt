@@ -7,6 +7,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -165,5 +167,49 @@ class LedgerRepositoryTest {
         assertNull(cleared.merchantId)
         assertNull(cleared.merchantRaw)
         assertNull(ledger.saveQuickEntry(null, 100, coffee, cash, note = null, merchantName = " ").merchantId)
+    }
+
+    /** Money in from a person, as a statement import or a sync from the dashboard leaves it. */
+    private suspend fun moneyIn(cents: Long, from: String): TransactionEntity {
+        val merchant = MerchantEntity("m-$from", from, null, 0, 0)
+        db.merchantDao().upsert(merchant)
+        val t = TransactionEntity(
+            id = "in-$from-$cents", amountCents = -cents, currency = "CAD", occurredAt = now.toEpochMilli(),
+            zoneId = zone.id, accountId = null, merchantId = merchant.id, merchantRaw = from.uppercase(), categoryId = null,
+            note = null, source = Source.CSV.name, status = TransactionStatus.CAPTURED.name, categorySource = null,
+            kind = Kind.INCOME.name, updatedAt = 0,
+        )
+        db.transactionDao().upsert(t)
+        return t
+    }
+
+    @Test
+    fun `money in is income under Income and money back under spending`() = runTest {
+        val categories = CategoryRepository(db, Clock.fixed(now, zone))
+        categories.add("Income", null)
+        val income = db.categoryDao().getActive().single { it.name == "Income" }.id
+        categories.add("Government", income)
+        val government = db.categoryDao().getActive().single { it.name == "Government" }.id
+
+        val refund = ledger.saveQuickEntry(moneyIn(78_75, "Canada"), -78_75, government, null, note = null)
+        assertEquals(Kind.INCOME.name, refund.kind)
+        val payback = ledger.saveQuickEntry(moneyIn(31_00, "Danya Ijaz"), -31_00, groceries, null, note = null)
+        assertEquals(Kind.EXPENSE.name, payback.kind)
+    }
+
+    @Test
+    fun `a payment that settles an owed part is a transfer`() = runTest {
+        val dinner = ledger.saveQuickEntry(null, 62_00, groceries, cash, note = null)
+        ledger.addSplit(dinner.id, 31_00, null, owedBy = "Danya")
+        val part = ledger.openOwedParts().single()
+        assertEquals("Danya" to 31_00L, part.owedBy to part.amountCents)
+
+        val payment = moneyIn(31_00, "Danya Ijaz")
+        assertTrue(ledger.settleOwedWith(payment.id, part.splitId))
+        val settled = ledger.getTransaction(payment.id)!!
+        assertEquals(Kind.TRANSFER.name to TransactionStatus.CONFIRMED.name, settled.kind to settled.status)
+        assertEquals("Danya paid back", settled.note)
+        assertTrue(ledger.openOwedParts().isEmpty())
+        assertFalse(ledger.settleOwedWith(payment.id, part.splitId))
     }
 }

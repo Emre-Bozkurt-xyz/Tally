@@ -1,9 +1,12 @@
 package tally.server.web
 
 import kotlinx.serialization.json.JsonObject
+import tally.core.model.CategoryKinds
 import tally.core.model.Kind
 import tally.core.model.TransactionStatus
 import tally.core.report.LedgerEntry
+import tally.core.report.OwedMatch
+import tally.core.report.OwedPart
 import tally.core.report.SplitPart
 import tally.core.report.withSplits
 import tally.core.sync.SyncServer
@@ -70,6 +73,21 @@ class Snapshot(
         t.merchantId?.let { merchantsById[it]?.name } ?: t.merchantRaw ?: t.note ?: "Manual entry"
 
     fun date(t: TransactionRow): LocalDate = Instant.ofEpochMilli(t.occurredAt).atZone(zoneOf(t)).toLocalDate()
+
+    /** "Owed to me" parts not paid back yet, oldest first. */
+    val openOwed: List<OwedPart> = splits.filter { !it.deleted && it.owedBy != null && it.settledAt == null }
+        .sortedBy { it.updatedAt }
+        .map { OwedPart(it.id, it.owedBy!!, it.amountCents) }
+
+    /** The open owed part money in from [t]'s sender pays back, if any. */
+    fun settles(t: TransactionRow): OwedPart? =
+        if (t.amountCents < 0) OwedMatch.find(merchantName(t), -t.amountCents, openOwed) else null
+
+    /** Under the top-level "Income" category (money in there is income, elsewhere it's money back). */
+    fun isIncomeCategory(categoryId: String?): Boolean {
+        val category = categoryId?.let { categoriesById[it] } ?: return false
+        return CategoryKinds.isIncome((category.parentId?.let { categoriesById[it] } ?: category).name)
+    }
 
     /** Captures waiting for you, newest first. */
     val needsReview = this.transactions.filter { it.status == TransactionStatus.CAPTURED.name }

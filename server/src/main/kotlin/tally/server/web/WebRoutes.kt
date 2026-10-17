@@ -110,6 +110,12 @@ fun Route.dashboard(edits: WebEdits, statements: StatementImport, zone: ZoneId, 
         html(inboxDoneHtml(if (done) "Filed under ${s.label(categoryId)}." else "Already handled."))
     }
 
+    edit("/inbox/{id}/settle/{split}") { id ->
+        val splitId = parameters["split"].orEmpty()
+        val done = withContext(Dispatchers.IO) { edits.settle(id, splitId, source()) }
+        html(inboxDoneHtml(if (done) "Settled." else "Already handled."))
+    }
+
     edit("/inbox/{id}/ignore") { id ->
         val done = withContext(Dispatchers.IO) { edits.ignore(id, source()) }
         html(inboxDoneHtml(if (done) "Deleted." else "Already handled."))

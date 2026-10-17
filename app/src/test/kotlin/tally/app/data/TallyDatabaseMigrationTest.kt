@@ -54,6 +54,7 @@ class TallyDatabaseMigrationTest {
         helper.runMigrationsAndValidate(4).close()
         helper.runMigrationsAndValidate(5).close()
         helper.runMigrationsAndValidate(6).close()
+        helper.runMigrationsAndValidate(7).close()
 
         val db = Room.databaseBuilder(context, TallyDatabase::class.java, dbFile.absolutePath)
             .setDriver(driver)

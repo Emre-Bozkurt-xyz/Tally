@@ -165,4 +165,14 @@ class RulesRepositoryTest {
         assertTrue(result is TomlImport.Invalid)
         assertEquals(before, repo.exportToml())
     }
+
+    @Test
+    fun `ask rules round trip and only suggest`() = runTest {
+        importOk(repo.exportToml() + "\n[[rule]]\nmerchant = 'Foodie Fruitie'\ncategory = \"Food/Groceries\"\nask = true\n")
+        assertTrue(db.ruleDao().getActive().single().ask)
+        assertTrue(repo.exportToml().contains("ask = true"))
+        val captured = captureFoodieFruitie()
+        assertEquals(groceries, captured.transaction.categoryId)
+        assertEquals(TransactionStatus.CAPTURED.name, captured.transaction.status)
+    }
 }

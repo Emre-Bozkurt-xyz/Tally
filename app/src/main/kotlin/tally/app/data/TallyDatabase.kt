@@ -13,6 +13,7 @@ import androidx.room.RoomDatabase
  * v4: aliases.priority (alias order; Phase 3).
  * v5: splits.settledAt ("owed to me"; Phase 6).
  * v6: raw_events.updatedAt (sync; Phase 4).
+ * v7: rules.ask (rules as inbox defaults, for money to and from people).
  *
  * Every version's schema JSON is committed in `app/schemas/`; migrations are tested
  * against it in `TallyDatabaseMigrationTest`.
@@ -31,9 +32,9 @@ import androidx.room.RoomDatabase
         RuleEntity::class,
         AccountIdentifierEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7)],
 )
 abstract class TallyDatabase : RoomDatabase() {
     abstract fun rawEventDao(): RawEventDao

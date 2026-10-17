@@ -1,6 +1,8 @@
 package tally.server.web
 
+import tally.core.model.CategoryKinds
 import tally.core.model.CategorySource
+import tally.core.model.Kind
 import tally.core.model.TransactionStatus
 import tally.core.rules.AliasSpec
 import tally.core.rules.CategorySpec
@@ -38,6 +40,8 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
                     categoryId = categoryId,
                     categorySource = CategorySource.MANUAL.name,
                     status = TransactionStatus.CONFIRMED.name,
+                    // Money in: income under "Income", otherwise money back for that spending.
+                    kind = CategoryKinds.kindFor(Kind.valueOf(t.kind), t.amountCents, s.isIncomeCategory(categoryId)).name,
                     updatedAt = now,
                 ),
                 s.stored(Rows.transactions.table, t.id),
@@ -64,6 +68,35 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
                     s.stored(Rows.transactions.table, t.id),
                 ),
                 learn(s, t.merchantId, categoryId, now),
+            ),
+            source,
+        )
+        return true
+    }
+
+    /**
+     * Money in that pays back an "owed to me" part: the part is settled and the money is a
+     * transfer (the owed part never counted as your spending), as on the phone.
+     */
+    fun settle(transactionId: String, splitId: String, source: String = WEB): Boolean {
+        val s = snapshot()
+        val t = s.transactions.find { it.id == transactionId } ?: return false
+        val split = s.splits.values.flatten().find { it.id == splitId }?.takeIf { it.owedBy != null && it.settledAt == null } ?: return false
+        val now = clock.millis()
+        sync.write(
+            listOf(
+                Rows.splits.encode(split.copy(settledAt = t.occurredAt, updatedAt = now), s.stored(Rows.splits.table, split.id)),
+                Rows.transactions.encode(
+                    t.copy(
+                        kind = Kind.TRANSFER.name,
+                        status = TransactionStatus.CONFIRMED.name,
+                        categoryId = null,
+                        categorySource = null,
+                        note = t.note ?: "${split.owedBy} paid back",
+                        updatedAt = now,
+                    ),
+                    s.stored(Rows.transactions.table, t.id),
+                ),
             ),
             source,
         )
@@ -104,6 +137,7 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
                     maxAmountCents = rule.maxAmountCents,
                     account = rule.accountId?.let { s.accountsById[it]?.name },
                     tags = rule.tagsCsv?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty(),
+                    ask = rule.ask,
                 )
             },
         )
@@ -165,6 +199,7 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
                 categoryId = pathIds.getValue(spec.category),
                 tagsCsv = spec.tags.joinToString(",").ifEmpty { null },
                 updatedAt = now,
+                ask = spec.ask,
             )
             val same = oldRules.firstOrNull { it.copy(id = wanted.id, priority = i, updatedAt = now) == wanted }?.also { oldRules.remove(it) }
             val row = same?.copy(priority = i, updatedAt = now) ?: wanted

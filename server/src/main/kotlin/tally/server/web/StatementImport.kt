@@ -8,6 +8,7 @@ import org.apache.pdfbox.text.PDFTextStripper
 import org.slf4j.LoggerFactory
 import tally.core.llm.CategorizeRequest
 import tally.core.llm.CategorizeService
+import tally.core.model.CategoryKinds
 import tally.core.model.CategorySource
 import tally.core.model.Kind
 import tally.core.model.Source
@@ -137,13 +138,16 @@ class StatementImport(
                 source = Source.CSV.name, status = TransactionStatus.CONFIRMED.name, categorySource = null,
                 kind = line.kind.name, updatedAt = now,
             )
-            if (line.kind != Kind.EXPENSE) {
-                // Income and transfers need no category; the description says what they were.
+            if (line.kind == Kind.TRANSFER) {
+                // Between your own accounts: no category; the description says what it was.
                 return@map ImportPlan.Added(line, base.copy(note = line.description), null)
             }
             val name = normalizer.normalize(line.merchant)
             val merchant = merchantsByName.getOrPut(name) { MerchantRow(UUID.randomUUID().toString(), name, null, 0, now) }
-            val suggestion = categorizer.categorize(name, line.amountCents, accountId, MerchantMemory(merchant.lastCategoryId, merchant.confirmCount))
+            // Money to and from people is asked about: memory suggests, only a plain rule files.
+            val suggestion = categorizer.categorize(
+                name, line.amountCents, accountId, MerchantMemory(merchant.lastCategoryId, merchant.confirmCount), trustMemory = !line.person,
+            )
             val categoryId = suggestion.categoryId?.takeIf { id -> s.categoryTree.any { it.id == id } }
             ImportPlan.Added(
                 line,
@@ -151,6 +155,8 @@ class StatementImport(
                     merchantId = merchant.id,
                     categoryId = categoryId,
                     categorySource = suggestion.source?.name?.takeIf { categoryId != null },
+                    kind = categoryId?.let { CategoryKinds.kindFor(line.kind, line.amountCents, s.isIncomeCategory(it)).name } ?: line.kind.name,
+                    note = line.description.takeIf { line.kind == Kind.INCOME },
                     status = if (categoryId != null && suggestion.confidence == Confidence.HIGH) {
                         TransactionStatus.CONFIRMED.name
                     } else {
@@ -228,7 +234,7 @@ class StatementImport(
     private fun RuleRow.toRule() = Rule(
         id = id, priority = priority, merchantPattern = merchantPattern, minAmountCents = minAmountCents,
         maxAmountCents = maxAmountCents, accountId = accountId, categoryId = categoryId,
-        tags = tagsCsv.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() },
+        tags = tagsCsv.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }, ask = ask,
     )
 
     companion object {

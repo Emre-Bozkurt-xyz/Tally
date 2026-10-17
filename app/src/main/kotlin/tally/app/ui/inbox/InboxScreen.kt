@@ -31,6 +31,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -56,6 +57,9 @@ import tally.app.ui.ledger.displayAmount
 import tally.app.ui.ledger.occurredAtLocal
 import tally.app.ui.theme.OkGreen
 import tally.core.capture.WatchedPackages
+import tally.core.model.CategoryKinds
+import tally.core.report.OwedMatch
+import tally.core.report.OwedPart
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -92,8 +96,28 @@ fun InboxScreen(
     val chips = remember(activeCategories) { activeCategories.chipCategories() }
     var picking by remember { mutableStateOf<TransactionEntity?>(null) }
     val today = LocalDate.now()
+    // Open "owed to me" parts, for money in that pays one back. Re-read as the inbox changes.
+    val owed by produceState(initialValue = emptyList<OwedPart>(), review) { value = ledger.openOwedParts() }
+
+    fun nameOf(transaction: TransactionEntity) = transaction.merchantId?.let { merchantNames[it] } ?: transaction.merchantRaw
+
+    fun settles(transaction: TransactionEntity): OwedPart? =
+        if (transaction.amountCents < 0) OwedMatch.find(nameOf(transaction), -transaction.amountCents, owed) else null
+
+    fun incomeCategory(categoryId: String): Boolean {
+        val category = categories.find { it.id == categoryId } ?: return false
+        val top = category.parentId?.let { parent -> categories.find { it.id == parent } } ?: category
+        return CategoryKinds.isIncome(top.name)
+    }
 
     fun accept(transaction: TransactionEntity) {
+        settles(transaction)?.let { part ->
+            scope.launch {
+                ledger.settleOwedWith(transaction.id, part.splitId)
+                snackbar.showSnackbar("${part.owedBy} paid back ${displayAmount(part.amountCents)}")
+            }
+            return
+        }
         if (transaction.categoryId == null) {
             picking = transaction // Nothing to accept yet.
             return
@@ -146,7 +170,15 @@ fun InboxScreen(
                 }
             }
             items(transactions, key = { it.id }) { transaction ->
-                val merchantName = transaction.merchantId?.let { merchantNames[it] } ?: transaction.merchantRaw
+                val merchantName = nameOf(transaction)
+                val settling = settles(transaction)
+                val suggestion = when {
+                    settling != null -> "Settles ${settling.owedBy}'s ${displayAmount(settling.amountCents)}"
+                    transaction.categoryId != null -> "Suggested: ${categoryNames[transaction.categoryId]}" +
+                        if (transaction.amountCents < 0 && !incomeCategory(transaction.categoryId)) " (money back)" else ""
+                    transaction.amountCents < 0 -> "Money in: pick income or what it pays back"
+                    else -> "No category yet"
+                }
                 SwipeRow(
                     rightIcon = Icons.Default.Check,
                     rightColor = OkGreen,
@@ -163,7 +195,7 @@ fun InboxScreen(
                         supportingContent = {
                             Text(
                                 listOfNotNull(
-                                    transaction.categoryId?.let { "Suggested: ${categoryNames[it]}" } ?: "No category yet",
+                                    suggestion,
                                     transaction.accountId?.let { accountNames[it] },
                                     "${dayLabel(transaction.occurredAtLocal().toLocalDate(), today)} " +
                                         TIME_FORMAT.format(transaction.occurredAtLocal()),

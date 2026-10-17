@@ -19,6 +19,8 @@ data class StatementLine(
     val merchant: String,
     val amountCents: Long,
     val kind: Kind,
+    /** Money to or from a person (e-Transfer): always asked about, whatever the rules say. */
+    val person: Boolean = false,
 )
 
 data class Statement(
@@ -203,7 +205,11 @@ object RbcStatements {
     }
 
     private fun line(p: Pending, deposit: Boolean): StatementLine {
-        val merchant = TYPE_PREFIX.replace(p.description, "").ifBlank { p.description }
+        val person = E_TRANSFER.containsMatchIn(p.description)
+        // e-Transfers end in a reference code ("C1AEndddGycC"); the person's name is the rest.
+        val merchant = TYPE_PREFIX.replace(p.description, "")
+            .let { if (person) TRANSFER_REFERENCE.replace(it, "") else it }
+            .ifBlank { p.description }
         val refund = Regex("(?i)refund|correction").containsMatchIn(p.description)
         val kind = when {
             deposit && refund -> Kind.EXPENSE // A refund lowers spending.
@@ -211,8 +217,13 @@ object RbcStatements {
             LOOKS_LIKE_TRANSFER.containsMatchIn(p.description) -> Kind.TRANSFER
             else -> Kind.EXPENSE
         }
-        return StatementLine(p.date, p.description, merchant, if (deposit) -p.cents else p.cents, kind)
+        return StatementLine(p.date, p.description, merchant, if (deposit) -p.cents else p.cents, kind, person)
     }
+
+    private val E_TRANSFER = Regex("(?i)e-transfer")
+
+    /** A trailing code of 8+ letters and digits, with at least one digit (names have none). */
+    private val TRANSFER_REFERENCE = Regex("\\s+(?=[A-Za-z0-9]*\\d)[A-Za-z0-9]{8,}$")
 
     private fun looksLikeDeposit(description: String) = LOOKS_LIKE_DEPOSIT.containsMatchIn(description)
 

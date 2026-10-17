@@ -1,18 +1,22 @@
 package tally.app.data
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
-import tally.core.normalize.MerchantNormalizer
 import tally.core.capture.WatchedPackages
-import tally.core.model.ParseStatus
 import tally.core.entry.CategoryRanking
 import tally.core.entry.CategoryUse
+import tally.core.model.CategoryKinds
 import tally.core.model.CategorySource
 import tally.core.model.Kind
 import tally.core.model.Money
+import tally.core.model.ParseStatus
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
+import tally.core.normalize.MerchantNormalizer
+import tally.core.report.OwedPart
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -164,6 +168,8 @@ class LedgerRepository(
     ): TransactionEntity {
         val now = clock.millis()
         val manual = existing == null || existing.source == Source.MANUAL.name
+        // Money in: income under "Income", otherwise money back for that spending.
+        val kind = existing?.let { CategoryKinds.kindFor(Kind.valueOf(it.kind), amountCents, isIncomeCategory(categoryId)) }
         val typed = merchantName?.trim()?.takeIf { manual }
         val merchant = typed?.takeIf { it.isNotEmpty() }?.let { merchantFor(it, now) }
         val transaction = existing?.copy(
@@ -173,6 +179,7 @@ class LedgerRepository(
             note = note,
             status = TransactionStatus.CONFIRMED.name,
             categorySource = CategorySource.MANUAL.name,
+            kind = kind?.name ?: existing.kind,
             updatedAt = now,
         )?.let { if (typed == null) it else it.copy(merchantId = merchant?.id, merchantRaw = merchant?.let { typed }) }
             ?: TransactionEntity(
@@ -205,6 +212,44 @@ class LedgerRepository(
             if (existing.accountId != accountId) memory.learnAccount(existing.id, accountId)
         }
         return transaction
+    }
+
+    /**
+     * [transactionId] is [splitId]'s owed part being paid back: the part is settled, and the
+     * money moves between you and them (a transfer), since the owed part never counted as
+     * your spending.
+     */
+    suspend fun settleOwedWith(transactionId: String, splitId: String): Boolean {
+        val transaction = transactions.getById(transactionId) ?: return false
+        val split = db.splitDao().getById(splitId)?.takeIf { it.owedBy != null && it.settledAt == null && !it.deleted } ?: return false
+        val now = clock.millis()
+        db.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                db.splitDao().setSettled(split.id, transaction.occurredAt, now)
+                transactions.upsert(
+                    transaction.copy(
+                        kind = Kind.TRANSFER.name,
+                        status = TransactionStatus.CONFIRMED.name,
+                        categoryId = null,
+                        categorySource = null,
+                        note = transaction.note ?: "${split.owedBy} paid back",
+                        updatedAt = now,
+                    ),
+                )
+            }
+        }
+        return true
+    }
+
+    /** Owed parts not paid back yet, for matching money that comes in. */
+    suspend fun openOwedParts(): List<OwedPart> =
+        db.splitDao().getOwed().filter { it.settledAt == null }.map { OwedPart(it.id, it.owedBy!!, it.amountCents) }
+
+    private suspend fun isIncomeCategory(categoryId: String): Boolean {
+        val all = db.categoryDao().getActive()
+        val category = all.find { it.id == categoryId } ?: return false
+        val top = category.parentId?.let { parent -> all.find { it.id == parent } } ?: category
+        return CategoryKinds.isIncome(top.name)
     }
 
     /** Known merchants for the quick entry suggestions: most confirmed first. */

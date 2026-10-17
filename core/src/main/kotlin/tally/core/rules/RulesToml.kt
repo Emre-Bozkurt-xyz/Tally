@@ -18,6 +18,8 @@ data class RuleSpec(
     /** Account name, e.g. "RBC Visa". */
     val account: String? = null,
     val tags: List<String> = emptyList(),
+    /** `ask = true`: suggest [category] in the inbox instead of filing it. */
+    val ask: Boolean = false,
 )
 
 /** Everything you can edit as TOML. Rule order is priority. */
@@ -85,6 +87,7 @@ object RulesToml {
             rule.account?.let { appendLine("account = ${string(it)}") }
             appendLine("category = ${string(rule.category)}")
             if (rule.tags.isNotEmpty()) appendLine("tags = ${array(rule.tags)}")
+            if (rule.ask) appendLine("ask = true")
         }
     }
 
@@ -180,7 +183,7 @@ object RulesToml {
             when (section) {
                 "categories" -> category(entry)
                 "alias" -> field(aliases.last().second, entry, setOf("match", "name"))
-                "rule" -> field(rules.last().second, entry, setOf("merchant", "category", "min_amount", "max_amount", "account", "tags"))
+                "rule" -> field(rules.last().second, entry, setOf("merchant", "category", "min_amount", "max_amount", "account", "tags", "ask"))
                 null -> errors += TomlError(entry.line, "${entry.key} is outside any section")
             }
         }
@@ -237,13 +240,20 @@ object RulesToml {
                 }
             }.orEmpty()
 
+            val ask = fields["ask"]?.let { (valueLine, value) ->
+                (value as? TomlValue.Bool)?.value ?: run {
+                    errors += TomlError(valueLine, "ask must be true or false")
+                    null
+                }
+            } ?: false
+
             merchant?.let { pattern -> Rule.patternError(pattern)?.let { errors += TomlError(fields.getValue("merchant").first, it) } }
             if (category != null && category !in paths) {
                 errors += TomlError(fields.getValue("category").first, "Unknown category \"$category\"")
             }
             if (min != null && max != null && min > max) errors += TomlError(line, "min_amount is above max_amount")
             if (merchant == null || category == null) return null
-            return RuleSpec(merchant, category, min, max, account, tags)
+            return RuleSpec(merchant, category, min, max, account, tags, ask)
         }
 
         private fun requiredString(line: Int, fields: Map<String, Pair<Int, TomlValue>>, key: String): String? {

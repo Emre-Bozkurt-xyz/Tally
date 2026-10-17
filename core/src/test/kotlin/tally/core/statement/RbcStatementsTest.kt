@@ -95,6 +95,9 @@ class RbcStatementsTest {
         assertEquals(200_00L to Kind.TRANSFER, line("RBC CREDIT CARD").let { it.amountCents to it.kind })
         assertEquals(-75_00L to Kind.INCOME, line("CANADA").let { it.amountCents to it.kind })
         assertEquals(-50_00L to Kind.INCOME, line("SAM SMITH").let { it.amountCents to it.kind })
+        // An e-Transfer is from a person, named without its reference code.
+        assertEquals("SAM SMITH" to true, line("SAM SMITH").let { it.merchant to it.person })
+        assertEquals(false, first.person)
         assertEquals(-1_400_00L to Kind.INCOME, line("ACME").let { it.amountCents to it.kind })
         assertEquals(1_000_00L to Kind.EXPENSE, line("ACME PROPERTIES").let { it.amountCents to it.kind })
         // A row across the page break keeps its date; a refund is a negative expense.

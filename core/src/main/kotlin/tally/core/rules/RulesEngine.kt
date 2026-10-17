@@ -15,6 +15,8 @@ data class Rule(
     val accountId: String? = null,
     val categoryId: String,
     val tags: List<String> = emptyList(),
+    /** A default to confirm in the inbox, not an automatic filing. */
+    val ask: Boolean = false,
 ) {
     companion object {
         /** Returns why [pattern] is unusable, or null. Rules are checked when saved, never when matched. */

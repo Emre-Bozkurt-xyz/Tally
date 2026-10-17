@@ -129,6 +129,7 @@ class RulesRepository(
                     maxAmountCents = rule.maxAmountCents,
                     account = rule.accountId?.let { accountNames[it] },
                     tags = rule.toRule().tags,
+                    ask = rule.ask,
                 )
             },
         )
@@ -234,6 +235,7 @@ class RulesRepository(
                 categoryId = pathIds.getValue(spec.category),
                 tagsCsv = spec.tags.joinToString(",").ifEmpty { null },
                 updatedAt = now,
+                ask = spec.ask,
             )
             val same = oldRules.firstOrNull { it.copy(id = wanted.id, priority = i, updatedAt = now) == wanted }
                 ?.also { oldRules.remove(it) }

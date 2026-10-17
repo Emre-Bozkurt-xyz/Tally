@@ -47,4 +47,6 @@ data class RuleEntity(
     val tagsCsv: String?,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    /** Suggest [categoryId] in the inbox instead of filing it (`ask = true` in TOML). (v7) */
+    @ColumnInfo(defaultValue = "0") val ask: Boolean = false,
 )

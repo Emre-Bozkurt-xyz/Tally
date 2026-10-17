@@ -113,6 +113,48 @@ class StatementImportTest {
     }
 
     @Test
+    fun `money from people waits for you with a default, plain income rules file it`() {
+        val incomeCats = listOf(
+            CategoryRow("income", "Income", null, null, 5, false, 0),
+            CategoryRow("gov", "Government", "income", null, 0, false, 0),
+        )
+        val sam = MerchantRow("m-sam", "Sam Smith", "coffee", 9, 0) // Trusted memory, but a person.
+        sync.write(
+            incomeCats.map { Rows.categories.encode(it, null) } + Rows.merchants.encode(sam, null) + listOf(
+                Rows.rules.encode(RuleRow("r1", 0, "Danya Ijaz", null, null, null, "coffee", null, 0, ask = true), null),
+                Rows.rules.encode(RuleRow("r2", 1, "Canada", null, null, null, "gov", null, 0), null),
+            ),
+        )
+        fun person(day: Int, name: String, cents: Long) =
+            StatementLine(LocalDate.of(2026, 9, day), "e-Transfer - Autodeposit $name", name, cents, Kind.INCOME, person = true)
+        val plan = import.plan(
+            snapshot(),
+            statement.copy(
+                kind = StatementKind.CHEQUING,
+                lines = listOf(
+                    person(14, "DANYA IJAZ", -31_00),
+                    person(15, "SAM SMITH", -12_00),
+                    person(16, "RAIENA HAQUE", -20_00),
+                    StatementLine(LocalDate.of(2026, 9, 10), "Prov/Local Gvt Payment CANADA", "CANADA", -78_75, Kind.INCOME),
+                ),
+            ),
+            "chq",
+        )
+        fun added(name: String) = plan.added.single { (it.merchant?.name ?: snapshot().merchantsById[it.transaction.merchantId]?.name) == name }.transaction
+
+        val danya = added("Danya Ijaz")
+        assertEquals(listOf("coffee", CategorySource.RULE.name, TransactionStatus.CAPTURED.name, Kind.EXPENSE.name),
+            listOf(danya.categoryId, danya.categorySource, danya.status, danya.kind))
+        val samT = added("Sam Smith")
+        assertEquals(listOf("coffee", CategorySource.MEMORY.name, TransactionStatus.CAPTURED.name),
+            listOf(samT.categoryId, samT.categorySource, samT.status))
+        val raiena = added("Raiena Haque")
+        assertEquals(listOf(null, TransactionStatus.CAPTURED.name, Kind.INCOME.name), listOf(raiena.categoryId, raiena.status, raiena.kind))
+        val canada = added("Canada")
+        assertEquals(listOf("gov", TransactionStatus.CONFIRMED.name, Kind.INCOME.name), listOf(canada.categoryId, canada.status, canada.kind))
+    }
+
+    @Test
     fun `importing writes the plan, and importing again changes nothing`() {
         val token = import.stash(statement)
         val first = import.commit(token, "visa", "web-test")!!

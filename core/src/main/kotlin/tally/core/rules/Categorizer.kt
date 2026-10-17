@@ -34,8 +34,8 @@ data class Suggestion(
 )
 
 /**
- * Picks a category for a capture: your rules first (you said so explicitly: trusted), then
- * merchant memory, then nothing. Phase 4 adds the LLM behind memory.
+ * Picks a category for a capture: your rules first (you said so explicitly: trusted, unless
+ * the rule says `ask`), then merchant memory, then nothing (the LLM fills in later).
  */
 class Categorizer(private val rules: RulesEngine = RulesEngine.EMPTY) {
     fun categorize(
@@ -43,13 +43,15 @@ class Categorizer(private val rules: RulesEngine = RulesEngine.EMPTY) {
         amountCents: Long,
         accountId: String?,
         memory: MerchantMemory?,
+        /** False for money to and from people: the same person, a different reason each time. */
+        trustMemory: Boolean = true,
     ): Suggestion {
         rules.match(merchant, amountCents, accountId)?.let { rule ->
-            return Suggestion(rule.categoryId, CategorySource.RULE, Confidence.HIGH, rule.tags)
+            return Suggestion(rule.categoryId, CategorySource.RULE, if (rule.ask) Confidence.MEDIUM else Confidence.HIGH, rule.tags)
         }
         val categoryId = memory?.lastCategoryId
             ?: return Suggestion(categoryId = null, source = null, confidence = Confidence.LOW)
-        val confidence = if (memory.confirmCount >= MerchantMemory.TRUSTED_AFTER) Confidence.HIGH else Confidence.MEDIUM
+        val confidence = if (trustMemory && memory.confirmCount >= MerchantMemory.TRUSTED_AFTER) Confidence.HIGH else Confidence.MEDIUM
         return Suggestion(categoryId, CategorySource.MEMORY, confidence)
     }
 }

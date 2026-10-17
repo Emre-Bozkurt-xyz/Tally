@@ -356,10 +356,24 @@ fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow) {
             }
         }
         div("item-actions") {
-            if (t.categoryId != null) {
+            val settling = s.settles(t)
+            if (settling != null) {
+                span("suggestion") {
+                    +"Settles ${settling.owedBy}'s ${Money.format(settling.amountCents)}"
+                    span("badge") { +"owed to you" }
+                }
+                button(classes = "primary") {
+                    attributes["hx-post"] = "/inbox/${t.id}/settle/${settling.splitId}"
+                    attributes["hx-target"] = "#item-${t.id}"
+                    attributes["hx-swap"] = "outerHTML"
+                    +"Settle"
+                }
+            } else if (t.categoryId != null) {
                 span("suggestion") {
                     +s.label(t.categoryId)
+                    if (t.amountCents < 0 && !s.isIncomeCategory(t.categoryId)) span("muted") { +" (money back)" }
                     when (t.categorySource) {
+                        CategorySource.RULE.name -> span("badge") { +"your default" }
                         CategorySource.LLM.name -> span("badge") { +"suggested" }
                         CategorySource.MEMORY.name -> span("badge") { +"from memory" }
                     }
