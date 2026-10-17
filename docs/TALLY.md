@@ -82,7 +82,7 @@ Versions are pinned in `gradle/libs.versions.toml`.
 | Web UI | Server-rendered kotlinx.html + HTMX + Chart.js | One deployable, no JS build step. Swap to a SPA only if it starts hurting |
 | Auth | Cloudflare Access app on the domain: browser via your Access login, phone via an Access service token. The server verifies the `Cf-Access-Jwt-Assertion` JWT (team keys, AUD) on everything but `/healthz` | Replaces the bearer token; also blocks requests that skip Cloudflare and hit the VPS directly |
 | LLM | Anthropic API, `claude-haiku-5-5` | One call per unseen merchant, result cached |
-| Deploy | `tally.ems-place.com`: Cloudflare -> VPS Caddy -> FRP -> mini-PC `127.0.0.1:18310`. Self-hosted runner `[minipc, tally, prod]`, `scripts/deploy.sh` (same shape as Vault's) | See `docs/DEPLOYMENT.md` |
+| Deploy | `tally.ems-place.com`: Cloudflare -> VPS Caddy -> FRP -> mini-PC `127.0.0.1:18410`. Self-hosted runner `[minipc, tally, prod]`, `scripts/deploy.sh` (same shape as Vault's) | See `docs/DEPLOYMENT.md` |
 | Backups | `scripts/backup-db.sh` (pg_dump, keeps 30) from cron, copied wherever Vault backups go | |
 
 ### Tooling

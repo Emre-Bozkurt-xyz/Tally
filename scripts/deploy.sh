@@ -5,7 +5,7 @@ set -euo pipefail
 APP_DIR="/opt/apps/tally/repo"
 COMPOSE_FILE="$APP_DIR/docker-compose.production.yml"
 ENV_FILE="$APP_DIR/.env.production"
-HEALTH_URL="http://127.0.0.1:18310/healthz"
+HEALTH_URL="http://127.0.0.1:18410/healthz"
 BRANCH="main"
 
 dc() {

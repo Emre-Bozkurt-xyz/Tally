@@ -7,7 +7,7 @@ Phone (Access service token) / Browser (Access login)
   -> Cloudflare DNS + Cloudflare Access (app "tally")
   -> DigitalOcean VPS: Caddy
   -> FRP tunnel
-  -> mini-PC 127.0.0.1:18310
+  -> mini-PC 127.0.0.1:18410
      -> tally-server (Ktor, port 8080 in the container)
      -> tally-postgres (internal network only)
 ```
@@ -19,9 +19,9 @@ The server checks the Access JWT (`Cf-Access-Jwt-Assertion`) on every request ex
 
 | What | Where |
 |---|---|
-| tally-server | mini-PC `127.0.0.1:18310` -> container `8080` |
+| tally-server | mini-PC `127.0.0.1:18410` -> container `8080` |
 | tally-postgres | internal Docker network only, never published |
-| FRP remote port | your choice on the VPS (examples below use `18310`) |
+| FRP remote port | your choice on the VPS (examples below use `18410`) |
 
 ## One-time setup
 
@@ -30,11 +30,23 @@ Do these in order. Steps 1 to 3 are on the mini-PC, 4 and 5 on the VPS, 6 and 7 
 ### 1. Runner
 
 GitHub -> Emre-Bozkurt-xyz/Tally -> Settings -> Actions -> Runners -> New self-hosted runner
-(Linux). Install it on the mini-PC like the Vault/Mosaic runners and give it the labels:
+(Linux) gives the download URL and a registration token (valid about an hour). On the
+mini-PC, as your normal user (the runner refuses to configure under sudo, and it must own its
+folder):
 
-```txt
-minipc, tally, prod
+```bash
+sudo mkdir -p /opt/actions-runner/tally && sudo chown "$USER:$USER" /opt/actions-runner/tally
+cd /opt/actions-runner/tally
+curl -o runner.tar.gz -L PASTE_DOWNLOAD_URL_HERE   # from the GitHub page
+tar xzf runner.tar.gz            # no sudo, or the files end up owned by root
+./config.sh --url https://github.com/Emre-Bozkurt-xyz/Tally --token PASTE_TOKEN_HERE \
+  --labels minipc,tally,prod --name minipc-tally
+sudo ./svc.sh install "$USER"    # run as a service, survives logout and reboot
+sudo ./svc.sh start
+groups "$USER" | grep -q docker || sudo usermod -aG docker "$USER"   # deploy runs docker compose
 ```
+
+If you already extracted it with sudo: `sudo chown -R "$USER:$USER" /opt/actions-runner/tally`.
 
 The workflow (`.github/workflows/deploy.yml`) runs tests on GitHub's runners, then deploys on
 `[self-hosted, minipc, tally, prod]` for pushes to `main` that touch `core/`, `server/`, Gradle
@@ -69,8 +81,8 @@ development only).
 name = "tally-server"
 type = "tcp"
 localIP = "127.0.0.1"
-localPort = 18310
-remotePort = 18310
+localPort = 18410
+remotePort = 18410
 ```
 
 Restart `frpc`.
@@ -80,7 +92,7 @@ Restart `frpc`.
 ```caddy
 tally.ems-place.com {
     encode zstd gzip
-    reverse_proxy 127.0.0.1:18310
+    reverse_proxy 127.0.0.1:18410
 }
 ```
 
@@ -123,7 +135,7 @@ bash /opt/apps/tally/repo/scripts/deploy.sh
 
 ```bash
 # On the mini-PC: liveness, no login needed.
-curl http://127.0.0.1:18310/healthz                     # ok
+curl http://127.0.0.1:18410/healthz                     # ok
 
 # Anywhere, as the phone will: through Access with the service token.
 curl https://tally.ems-place.com/api/me \
