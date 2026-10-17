@@ -133,3 +133,63 @@ fun CategoryChooser(categories: List<CategoryEntity>, selectedId: String?, onPic
         }
     }
 }
+
+/** "Delete 40 notifications?" as a sheet: what happens, then Cancel and the (red) action. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConfirmSheet(title: String, body: String, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        dragHandle = { SheetHandle() },
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.headlineSmall)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = Tally.colors.muted)
+            Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton("Cancel", onDismiss, Modifier.weight(1f), style = PillStyle.Soft, height = 52.dp)
+                PillButton(confirm, { onDismiss(); onConfirm() }, Modifier.weight(1f), style = PillStyle.Danger, icon = TallyIcons.Trash, height = 52.dp)
+            }
+        }
+    }
+}
+
+/** One choice in an [ActionSheet]. */
+class SheetAction(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val danger: Boolean = false, val onClick: () -> Unit)
+
+/** A short list of actions in a sheet, instead of a dropdown menu. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ActionSheet(title: String, actions: List<SheetAction>, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        dragHandle = { SheetHandle() },
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
+            MonoLabel(title, Modifier.padding(bottom = 10.dp))
+            Column(Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))) {
+                actions.forEachIndexed { i, action ->
+                    val tint = if (action.danger) Tally.colors.over else MaterialTheme.colorScheme.onSurface
+                    ListRow(
+                        title = action.label,
+                        leading = {
+                            IconTile(
+                                action.icon,
+                                background = if (action.danger) MaterialTheme.colorScheme.errorContainer else Tally.colors.chip,
+                                tint = tint,
+                            )
+                        },
+                        onClick = { onDismiss(); action.onClick() },
+                    )
+                    if (i < actions.lastIndex) RowDivider()
+                }
+            }
+        }
+    }
+}

@@ -512,6 +512,7 @@ fun SoftTextField(
     isError: Boolean = false,
     supportingText: String? = null,
     keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+    visualTransformation: androidx.compose.ui.text.input.VisualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
 ) {
     val fill = Tally.colors.chip
     androidx.compose.material3.TextField(
@@ -523,6 +524,7 @@ fun SoftTextField(
         isError = isError,
         supportingText = supportingText?.let { { Text(it) } },
         keyboardOptions = keyboardOptions,
+        visualTransformation = visualTransformation,
         shape = RoundedCornerShape(16.dp),
         textStyle = MaterialTheme.typography.bodyLarge,
         colors = androidx.compose.material3.TextFieldDefaults.colors(

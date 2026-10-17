@@ -9,6 +9,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import tally.app.ui.components.AmountText
+import tally.app.ui.components.CategoryChooser
+import tally.app.ui.components.EditorSheet
+import tally.app.ui.components.FieldHint
+import tally.app.ui.components.FieldLabel
+import tally.app.ui.components.Segmented
+import tally.app.ui.components.SoftTextField
 import tally.app.ui.components.CircleIconButton
 import tally.app.ui.components.LetterAvatar
 import tally.app.ui.components.MonoLabel
@@ -32,14 +38,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -265,7 +268,7 @@ fun TransactionScreen(
         }
         if (addingSplit) {
             SplitDialog(
-                categories = chips,
+                categories = activeCategories,
                 remainderCents = t.amountCents - splits.sumOf { it.amountCents },
                 onAdd = { cents, categoryId, owedBy -> ledger.addSplit(id, cents, categoryId, owedBy) },
                 onDismiss = { addingSplit = false },
@@ -325,32 +328,22 @@ private fun TagDialog(existing: List<TagEntity>, onAdd: suspend (String) -> Stri
         error = onAdd(value)
         if (error == null) onDismiss()
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add tag") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it; error = null },
-                    label = { Text("Tag") },
-                    singleLine = true,
-                    isError = error != null,
-                    supportingText = error?.let { { Text(it) } },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    existing.forEach { tag -> PillChip("#${tag.name}", selected = false, onClick = { add(tag.name) }) }
-                }
+    EditorSheet(
+        title = "Add tag",
+        onDismiss = onDismiss,
+        primary = "Add",
+        onPrimary = { add(name) },
+        primaryEnabled = name.isNotBlank(),
+        error = error,
+    ) {
+        SoftTextField(name, { name = it; error = null }, "trip, work, gift…", leading = TallyIcons.Tag)
+        if (existing.isNotEmpty()) {
+            FieldLabel("Your tags")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                existing.forEach { tag -> PillChip("#${tag.name}", selected = false, onClick = { add(tag.name) }) }
             }
-        },
-        confirmButton = { TextButton(onClick = { add(name) }) { Text("Add") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        }
+    }
 }
 
 @Composable
@@ -367,57 +360,42 @@ private fun SplitDialog(
     var categoryId by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Split off part") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it; error = null },
-                    label = { Text("Amount (up to ${Money.format(remainderCents)})") },
-                    singleLine = true,
-                    isError = error != null,
-                    supportingText = error?.let { { Text(it) } },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PillChip("Another category", selected = !owed, onClick = { owed = false })
-                    PillChip("Someone owes me", selected = owed, onClick = { owed = true })
-                }
-                if (owed) {
-                    OutlinedTextField(
-                        value = owedBy,
-                        onValueChange = { owedBy = it; error = null },
-                        label = { Text("Who") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        categories.forEach { c ->
-                            PillChip(c.name, selected = c.id == categoryId, onClick = { categoryId = c.id })
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val cents = parseCents(amount)
-                if (cents == null) {
-                    error = "Amounts look like 10 or 10.50"
-                    return@TextButton
-                }
+    EditorSheet(
+        title = "Split off part",
+        onDismiss = onDismiss,
+        primary = "Add",
+        onPrimary = {
+            val cents = parseCents(amount)
+            if (cents == null) {
+                error = "Amounts look like 10 or 10.50"
+            } else {
                 scope.launch {
                     error = onAdd(cents, categoryId.takeIf { !owed }, owedBy.takeIf { owed })
                     if (error == null) onDismiss()
                 }
-            }) { Text("Add") }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        primaryEnabled = amount.isNotBlank() && (if (owed) owedBy.isNotBlank() else categoryId != null),
+        error = error,
+    ) {
+        FieldLabel("Amount")
+        SoftTextField(
+            amount,
+            { amount = it; error = null },
+            "Up to ${Money.format(remainderCents)}",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        )
+        FieldLabel("It's for")
+        Segmented(listOf("Another category", "Someone owes me"), if (owed) 1 else 0, { owed = it == 1 }, Modifier.fillMaxWidth())
+        if (owed) {
+            FieldLabel("Who")
+            SoftTextField(owedBy, { owedBy = it; error = null }, "Name", leading = TallyIcons.People)
+            FieldHint("When they pay you back, the inbox offers to settle it.")
+        } else {
+            FieldLabel("Category")
+            CategoryChooser(categories, categoryId) { categoryId = it }
+        }
+    }
 }
 
 private fun parseCents(text: String): Long? {

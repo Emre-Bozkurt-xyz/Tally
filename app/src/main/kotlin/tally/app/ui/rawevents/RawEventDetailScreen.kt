@@ -2,13 +2,20 @@ package tally.app.ui.rawevents
 
 import tally.app.ui.components.TallyTopBar
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
+import tally.app.ui.components.MonoLabel
+import tally.app.ui.components.ScreenPadding
+import tally.app.ui.components.TallyCard
+import tally.app.ui.theme.GeistMono
+import tally.app.ui.theme.Tally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -16,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.serialization.json.Json
@@ -29,7 +35,6 @@ import java.time.ZoneId
 
 private val prettyJson = Json { prettyPrint = true }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RawEventDetailScreen(
     repository: RawEventRepository,
@@ -40,6 +45,7 @@ fun RawEventDetailScreen(
         .collectAsStateWithLifecycle(initialValue = null)
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TallyTopBar(event?.let { WatchedPackages.displayName(it.source) } ?: "Raw event", onBack)
         },
@@ -54,29 +60,30 @@ private fun EventBody(current: RawEventEntity, modifier: Modifier = Modifier) {
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = ScreenPadding)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            fields(current).forEach { (label, value) -> Field(label, value) }
-            Text(
-                "Extras",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-            )
-            Text(
-                remember(current.extrasJson) { prettyExtras(current.extrasJson) },
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-            )
+            TallyCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+                fields(current).forEach { (label, value) -> Field(label, value) }
+            }
+            TallyCard(Modifier.fillMaxWidth()) {
+                MonoLabel("Extras")
+                Text(
+                    remember(current.extrasJson) { prettyExtras(current.extrasJson) },
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = GeistMono),
+                    modifier = Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun Field(label: String, value: String?) {
-    Column(Modifier.padding(vertical = 4.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
-        Text(value ?: "—", style = MaterialTheme.typography.bodyMedium)
+    Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        MonoLabel(label)
+        Text(value ?: "—", style = MaterialTheme.typography.bodyMedium, color = if (value == null) Tally.colors.faint else MaterialTheme.colorScheme.onSurface)
     }
 }
 

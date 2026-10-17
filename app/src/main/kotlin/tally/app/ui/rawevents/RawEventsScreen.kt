@@ -1,28 +1,20 @@
 package tally.app.ui.rawevents
 
-import tally.app.ui.theme.TallyIcons
-import tally.app.ui.components.CircleIconButton
-import tally.app.ui.components.TallyTopBar
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,8 +23,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,14 +32,31 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import tally.app.data.RawEventEntity
 import tally.app.data.RawEventRepository
+import tally.app.ui.components.ActionSheet
+import tally.app.ui.components.CircleIconButton
+import tally.app.ui.components.ConfirmSheet
+import tally.app.ui.components.EmptyMessage
+import tally.app.ui.components.MonoLabel
+import tally.app.ui.components.PillButton
+import tally.app.ui.components.PillTone
+import tally.app.ui.components.RowDivider
+import tally.app.ui.components.ScreenPadding
+import tally.app.ui.components.SectionHeader
+import tally.app.ui.components.SheetAction
+import tally.app.ui.components.StatusPill
+import tally.app.ui.components.TallyTopBar
+import tally.app.ui.components.groupShape
+import tally.app.ui.theme.Tally
+import tally.app.ui.theme.TallyIcons
 import tally.core.capture.WatchedPackages
+import tally.core.model.ParseStatus
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("EEE MMM d, HH:mm:ss")
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Every notification the listener recorded, newest first: export, clear, re-parse. */
 @Composable
 fun RawEventsScreen(
     repository: RawEventRepository,
@@ -63,152 +72,133 @@ fun RawEventsScreen(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var exporting by remember { mutableStateOf(false) }
-    var exportMenu by remember { mutableStateOf(false) }
+    var actions by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    var reparsing by remember { mutableStateOf(false) }
     val watchedCount = events.count { it.source in WatchedPackages.ALL }
     val otherCount = events.size - watchedCount
 
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("Clear $otherCount notifications?") },
-            text = {
-                Text(
-                    "Deletes everything recorded from apps other than RBC and the wallets (what " +
-                        "\"Log all packages\" collects). Bank and wallet notifications are kept. " +
-                        "Turn off \"Log all packages\" in Setup to stop collecting them.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmClear = false
-                    scope.launch { snackbar.showSnackbar("Cleared ${repository.deleteUnwatched()} notifications") }
-                }) { Text("Clear", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
-        )
+    fun export(everything: Boolean) {
+        scope.launch {
+            exporting = true
+            try {
+                shareJson(context, exportRawEvents(context, repository, everything))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                snackbar.showSnackbar("Export failed: ${e.message}")
+            } finally {
+                exporting = false
+            }
+        }
     }
-    var reparsing by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TallyTopBar("Raw events (${events.size})", onBack) {
-                    fun export(everything: Boolean) {
-                        exportMenu = false
+            TallyTopBar("Raw events", onBack) {
+                CircleIconButton(
+                    TallyIcons.Sync,
+                    "Re-parse",
+                    enabled = !reparsing,
+                    onClick = {
                         scope.launch {
-                            exporting = true
+                            reparsing = true
                             try {
-                                shareJson(context, exportRawEvents(context, repository, everything))
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                snackbar.showSnackbar("Export failed: ${e.message}")
+                                snackbar.showSnackbar(onReparse())
                             } finally {
-                                exporting = false
+                                reparsing = false
                             }
                         }
-                    }
-                    Box {
-                        CircleIconButton(TallyIcons.Download, "Export or clear", { exportMenu = true }, enabled = events.isNotEmpty() && !exporting)
-                        DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Export bank & wallet ($watchedCount)") },
-                                onClick = { export(everything = false) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Export everything (${events.size})") },
-                                onClick = { export(everything = true) },
-                            )
-                            if (otherCount > 0) {
-                                DropdownMenuItem(
-                                    text = { Text("Clear other apps ($otherCount)", color = MaterialTheme.colorScheme.error) },
-                                    onClick = {
-                                        exportMenu = false
-                                        confirmClear = true
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    CircleIconButton(
-                        TallyIcons.Sync,
-                        "Re-parse",
-                        enabled = !reparsing,
-                        onClick = {
-                            scope.launch {
-                                reparsing = true
-                                try {
-                                    snackbar.showSnackbar(onReparse())
-                                } finally {
-                                    reparsing = false
-                                }
-                            }
-                        },
-                    )
-                    CircleIconButton(TallyIcons.Sliders, "Setup", onOpenSetup)
+                    },
+                )
+                CircleIconButton(TallyIcons.Download, "Export or clear", { actions = true }, enabled = events.isNotEmpty() && !exporting)
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        if (events.isEmpty()) {
-            EmptyState(onOpenSetup, Modifier.padding(padding))
-        } else {
-            LazyColumn(contentPadding = padding) {
-                items(events, key = { it.id }) { event ->
-                    RawEventRow(event, onClick = { onOpenEvent(event.id) })
-                    HorizontalDivider()
+        LazyColumn(contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 24.dp)) {
+            if (events.isEmpty()) {
+                item {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        EmptyMessage(
+                            "No notifications yet",
+                            "Grant notification access in Setup, then make a purchase, or turn on \"Log all packages\" to see everything that arrives.",
+                        )
+                        PillButton("Open setup", onOpenSetup, icon = TallyIcons.Sliders)
+                    }
+                }
+            } else {
+                item {
+                    SectionHeader("$watchedCount bank & wallet · $otherCount other")
+                }
+            }
+            itemsIndexed(events, key = { _, it -> it.id }) { index, event ->
+                Column(Modifier.padding(horizontal = ScreenPadding)) {
+                    RawEventRow(event, Modifier.clip(groupShape(index, events.size)), onClick = { onOpenEvent(event.id) })
+                    if (index < events.lastIndex) RowDivider(start = 18.dp)
                 }
             }
         }
     }
-}
 
-@Composable
-private fun RawEventRow(event: RawEventEntity, onClick: () -> Unit) {
-    val time = Instant.ofEpochMilli(event.receivedAt).atZone(ZoneId.of(event.zoneId))
-    val overline = buildString {
-        append(WatchedPackages.displayName(event.source))
-        append(" · ")
-        append(TIME_FORMAT.format(time))
-        if (event.isGroupSummary) append(" · summary")
-        if (event.source in WatchedPackages.ALL) append(" · ${event.parseStatus.lowercase()}")
+    if (actions) {
+        ActionSheet(
+            title = "Raw events",
+            actions = listOfNotNull(
+                SheetAction("Export bank & wallet ($watchedCount)", TallyIcons.Download) { export(everything = false) },
+                SheetAction("Export everything (${events.size})", TallyIcons.Download) { export(everything = true) },
+                SheetAction("Setup", TallyIcons.Sliders, onClick = onOpenSetup),
+                if (otherCount > 0) SheetAction("Clear other apps ($otherCount)", TallyIcons.Trash, danger = true) { confirmClear = true } else null,
+            ),
+            onDismiss = { actions = false },
+        )
     }
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        overlineContent = { Text(overline) },
-        headlineContent = {
-            Text(event.title ?: "(no title)", maxLines = 1, overflow = TextOverflow.Ellipsis)
-        },
-        supportingContent = {
-            Text(
-                event.bigText ?: event.text ?: "(no text)",
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-    )
+    if (confirmClear) {
+        ConfirmSheet(
+            title = "Clear $otherCount notifications?",
+            body = "Deletes everything recorded from apps other than RBC and the wallets (what \"Log all packages\" collects). " +
+                "Bank and wallet notifications are kept. Turn off \"Log all packages\" in Setup to stop collecting them.",
+            confirm = "Clear",
+            onConfirm = { scope.launch { snackbar.showSnackbar("Cleared ${repository.deleteUnwatched()} notifications") } },
+            onDismiss = { confirmClear = false },
+        )
+    }
 }
 
 @Composable
-private fun EmptyState(onOpenSetup: () -> Unit, modifier: Modifier = Modifier) {
+private fun RawEventRow(event: RawEventEntity, modifier: Modifier, onClick: () -> Unit) {
+    val time = Instant.ofEpochMilli(event.receivedAt).atZone(ZoneId.of(event.zoneId))
+    val watched = event.source in WatchedPackages.ALL
     Column(
-        modifier = modifier.fillMaxSize().padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier
+            .fillMaxWidth()
+            .background(Tally.colors.card)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(
-            "No notifications captured yet.",
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            "Grant notification access in Setup, then make a purchase or turn on " +
-                "\"Log all packages\" to see everything that arrives.",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        TextButton(onClick = onOpenSetup, modifier = Modifier.padding(top = 16.dp)) {
-            Text("Open setup")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MonoLabel("${WatchedPackages.displayName(event.source)} · ${TIME_FORMAT.format(time)}", Modifier.weight(1f, fill = false))
+            if (event.isGroupSummary) StatusPill("Summary")
+            if (watched) {
+                StatusPill(
+                    event.parseStatus.lowercase(),
+                    tone = when (event.parseStatus) {
+                        ParseStatus.PARSED.name -> PillTone.Positive
+                        ParseStatus.FAILED.name -> PillTone.Danger
+                        else -> PillTone.Neutral
+                    },
+                )
+            }
         }
+        Text(event.title ?: "(no title)", style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            event.bigText ?: event.text ?: "(no text)",
+            style = MaterialTheme.typography.bodySmall,
+            color = Tally.colors.muted,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

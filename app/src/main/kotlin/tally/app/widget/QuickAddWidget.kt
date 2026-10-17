@@ -15,7 +15,9 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.LocalSize
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.LinearProgressIndicator
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
@@ -52,6 +54,7 @@ import tally.app.data.LedgerRepository
 import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.ledger.ledgerEntries
+import tally.core.entry.CategoryRanking
 import tally.core.model.Money
 import tally.core.report.BudgetStatus
 import tally.core.report.BudgetedCategory
@@ -59,8 +62,12 @@ import tally.core.report.Budgets
 import tally.core.report.WeekSpend
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.temporal.WeekFields
 import java.util.Locale
+
+private val CHIP_HEIGHT = 40.dp
+private val CHIP_GAP = 6.dp
 
 /** The app's paper and ink, day and night. Glance can't use the app's fonts, so labels use the system mono. */
 private object WidgetColors {
@@ -75,8 +82,14 @@ private object WidgetColors {
     val onReview = DayNight(day = Color(0xFF4A2D06), night = Color(0xFFF4D9AE))
 }
 
-/** Home screen widget: this week's spending, plus the starred categories as quick-add buttons. */
+/**
+ * Home screen widget: this week's spending, plus categories as quick-add buttons. Laid out
+ * for its actual size: fixed-height pills, one to three columns by width, as many rows as fit,
+ * starred categories first and then the ones you use most.
+ */
 class QuickAddWidget : GlanceAppWidget() {
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = WidgetData.load(context.appContainer.ledger)
         provideContent { Content(context, data) }
@@ -84,7 +97,7 @@ class QuickAddWidget : GlanceAppWidget() {
 
     companion object {
         private const val TAG = "QuickAddWidget"
-        private const val MAX_CATEGORIES = 4
+        private const val MAX_CATEGORIES = 12
 
         /** Redraws the widget whenever transactions or categories change. Runs for the app's lifetime. */
         @OptIn(FlowPreview::class)
@@ -121,14 +134,32 @@ class QuickAddWidget : GlanceAppWidget() {
                         Budgets.monthlyTotal(categories.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) }),
                     ),
                 )
-                val pinned = categories.chipCategories().filter { it.pinned }.take(MAX_CATEGORIES)
-                return WidgetData(week, pinned, ledger.observeInboxCount().first())
+                val choices = categories.chipCategories()
+                val byId = choices.associateBy { it.id }
+                val ranked = CategoryRanking.rank(
+                    treeOrder = choices.map { it.id },
+                    pinned = choices.filter { it.pinned }.map { it.id }.toSet(),
+                    uses = ledger.recentCategoryUses(),
+                    now = ZonedDateTime.now(),
+                ).mapNotNull { byId[it] }.take(MAX_CATEGORIES)
+                return WidgetData(week, ranked, ledger.observeInboxCount().first())
             }
         }
     }
 
     @Composable
     private fun Content(context: Context, data: WidgetData) {
+        val size = LocalSize.current
+        val innerWidth = size.width - 32.dp
+        val headerHeight = if (data.week.budgetCents != null) 74.dp else 62.dp
+        val free = size.height - 28.dp - headerHeight - 10.dp
+        val columns = when {
+            innerWidth >= 300.dp -> 3
+            innerWidth >= 150.dp -> 2
+            else -> 1
+        }
+        val fit = ((free + CHIP_GAP) / (CHIP_HEIGHT + CHIP_GAP)).toInt().coerceIn(0, 4)
+        val shown = data.categories.take(fit * columns)
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
@@ -137,25 +168,24 @@ class QuickAddWidget : GlanceAppWidget() {
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             Header(context, data.week, data.toReview)
-            Spacer(GlanceModifier.height(10.dp))
-            if (data.categories.isEmpty()) {
+            // Leftover height goes above the buttons, so they sit at the bottom near your thumb.
+            Spacer(GlanceModifier.defaultWeight())
+            if (data.categories.isEmpty() && fit > 0) {
                 Text(
                     "Star categories in Tally to show them here",
                     style = TextStyle(color = WidgetColors.muted, fontSize = 13.sp),
                 )
-            } else {
-                // Two rows of two: four names in one row don't fit at 4x2.
-                data.categories.chunked(2).forEachIndexed { index, row ->
-                    if (index > 0) Spacer(GlanceModifier.height(6.dp))
-                    Row(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
-                        row.forEachIndexed { i, category ->
-                            if (i > 0) Spacer(GlanceModifier.width(6.dp))
-                            CategoryButton(context, category)
-                        }
-                        if (row.size == 1) {
-                            Spacer(GlanceModifier.width(6.dp))
-                            Box(GlanceModifier.defaultWeight()) {}
-                        }
+            }
+            shown.chunked(columns).forEachIndexed { index, row ->
+                if (index > 0) Spacer(GlanceModifier.height(CHIP_GAP))
+                Row(modifier = GlanceModifier.fillMaxWidth()) {
+                    row.forEachIndexed { i, category ->
+                        if (i > 0) Spacer(GlanceModifier.width(CHIP_GAP))
+                        CategoryButton(context, category)
+                    }
+                    repeat(columns - row.size) {
+                        Spacer(GlanceModifier.width(CHIP_GAP))
+                        Box(GlanceModifier.defaultWeight().height(CHIP_HEIGHT)) {}
                     }
                 }
             }
@@ -248,9 +278,9 @@ class QuickAddWidget : GlanceAppWidget() {
         Box(
             modifier = GlanceModifier
                 .defaultWeight()
-                .fillMaxSize()
+                .height(CHIP_HEIGHT)
                 .background(WidgetColors.chip)
-                .cornerRadius(18.dp)
+                .cornerRadius(CHIP_HEIGHT / 2)
                 .clickable(actionStartActivity(quickAddIntent(context, category.id))),
             contentAlignment = Alignment.Center,
         ) {
@@ -259,7 +289,7 @@ class QuickAddWidget : GlanceAppWidget() {
                 maxLines = 1,
                 style = TextStyle(
                     color = WidgetColors.ink,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                 ),
             )
