@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import tally.core.capture.ExportedRawEvent
 import tally.core.capture.RawEventExport
 import tally.core.capture.RawEventExportCodec
+import tally.core.capture.WatchedPackages
 
 class RawEventRepository(private val dao: RawEventDao) {
     // Serializes the duplicate check and the insert, so two near-simultaneous re-posts
@@ -38,6 +39,12 @@ class RawEventRepository(private val dao: RawEventDao) {
         if (!duplicate) dao.insert(event)
         !duplicate
     }
+
+    /**
+     * Deletes everything recorded from apps other than the bank and wallets (what "log all
+     * packages" collects). Returns how many were deleted.
+     */
+    suspend fun deleteUnwatched(): Int = dao.deleteSourcesNotIn(WatchedPackages.ALL)
 
     suspend fun exportJson(nowMs: Long): String {
         val events = dao.getAll().map { it.toExported() }

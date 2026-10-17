@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,6 +29,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -61,6 +63,7 @@ fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
     val status = remember(refresh) { SetupStatus.read(context) }
     val logAll by container.settings.logAllPackages.collectAsStateWithLifecycle()
     val tileAdded by container.settings.quickAddTileAdded.collectAsStateWithLifecycle()
+    var confirmDelete by remember { mutableStateOf(false) }
     val stats by remember { container.rawEvents.observeSourceStats() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
@@ -159,6 +162,35 @@ fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
                     )
                 },
             )
+
+            val otherCount = stats.filter { it.source !in WatchedPackages.ALL }.sumOf { it.eventCount }
+            if (otherCount > 0) {
+                ListItem(
+                    headlineContent = { Text("Notifications from other apps") },
+                    supportingContent = {
+                        Text("$otherCount recorded by \"Log all packages\". Bank and wallet notifications are kept.")
+                    },
+                    trailingContent = {
+                        TextButton(onClick = { confirmDelete = true }) {
+                            Text("Delete", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                )
+            }
+            if (confirmDelete) {
+                AlertDialog(
+                    onDismissRequest = { confirmDelete = false },
+                    title = { Text("Delete $otherCount notifications?") },
+                    text = { Text("Removes everything recorded from apps other than RBC and the wallets. This can't be undone.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            confirmDelete = false
+                            scope.launch { container.rawEvents.deleteUnwatched() }
+                        }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+                )
+            }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionHeader("Listener health")

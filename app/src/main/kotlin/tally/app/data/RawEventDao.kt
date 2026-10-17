@@ -37,6 +37,10 @@ interface RawEventDao {
         bigText: String?,
     ): Boolean
 
+    /** Returns how many were deleted. */
+    @Query("DELETE FROM raw_events WHERE source NOT IN (:keep)")
+    suspend fun deleteSourcesNotIn(keep: Set<String>): Int
+
     @Query(
         """
         SELECT source, COUNT(*) AS eventCount, MAX(receivedAt) AS lastReceivedAt

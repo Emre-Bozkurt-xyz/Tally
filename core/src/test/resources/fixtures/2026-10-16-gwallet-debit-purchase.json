@@ -1,0 +1,67 @@
+{
+    "version": 1,
+    "exportedAt": 1792200514016,
+    "events": [
+        {
+            "id": "da165128-21e9-49f9-b8a8-5f2aa732d983",
+            "source": "com.google.android.apps.walletnfcrel",
+            "receivedAt": 1792199089736,
+            "postedAt": 1792199089433,
+            "zoneId": "America/Toronto",
+            "sbnKey": "0|com.google.android.apps.walletnfcrel|1001|939691607|10351",
+            "channelId": "tapandpay.transactions.low",
+            "isGroupSummary": false,
+            "title": "FOODIE FRUITIE",
+            "text": "CA$34.32 with Royal Bank Debit/Débit ••3881",
+            "bigText": null,
+            "extras": {
+                "EXTRA_LOGGING_NOTIFICATION_METADATA": "<44 bytes>",
+                "android.appInfo": "<android.content.pm.ApplicationInfo> ApplicationInfo{26baa2e com.google.android.apps.walletnfcrel}",
+                "android.infoText": null,
+                "android.largeIcon": null,
+                "android.progress": 0,
+                "android.progressIndeterminate": false,
+                "android.progressMax": 0,
+                "android.reduced.images": true,
+                "android.remoteInputHistory": null,
+                "android.shortCriticalText": null,
+                "android.showChronometer": false,
+                "android.showWhen": true,
+                "android.subText": null,
+                "android.text": "CA$34.32 with Royal Bank Debit/Débit ••3881",
+                "android.title": "FOODIE FRUITIE"
+            }
+        },
+        {
+            "id": "3a52b5a4-ff3e-412a-8627-8205faf24f80",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1792199110357,
+            "postedAt": 1792199110114,
+            "zoneId": "America/Toronto",
+            "sbnKey": "0|com.rbc.mobile.android|848|null|10480",
+            "channelId": "notificationChannelId",
+            "isGroupSummary": false,
+            "title": "RBC Mobile",
+            "text": "A withdrawal of $34.32 was made from your RBC account ********8805 on 10/17.",
+            "bigText": "A withdrawal of $34.32 was made from your RBC account ********8805 on 10/17.",
+            "extras": {
+                "android.appInfo": "<android.content.pm.ApplicationInfo> ApplicationInfo{3808f5c com.rbc.mobile.android}",
+                "android.bigText": "A withdrawal of $34.32 was made from your RBC account ********8805 on 10/17.",
+                "android.infoText": null,
+                "android.largeIcon": null,
+                "android.progress": 0,
+                "android.progressIndeterminate": false,
+                "android.progressMax": 0,
+                "android.reduced.images": true,
+                "android.remoteInputHistory": null,
+                "android.showChronometer": false,
+                "android.showWhen": true,
+                "android.subText": null,
+                "android.template": "android.app.Notification$BigTextStyle",
+                "android.text": "A withdrawal of $34.32 was made from your RBC account ********8805 on 10/17.",
+                "android.title": "RBC Mobile",
+                "androidx.core.app.extra.COMPAT_TEMPLATE": "androidx.core.app.NotificationCompat$BigTextStyle"
+            }
+        }
+    ]
+}

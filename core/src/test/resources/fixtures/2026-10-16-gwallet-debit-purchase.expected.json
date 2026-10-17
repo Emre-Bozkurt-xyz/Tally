@@ -1,0 +1,27 @@
+{
+    "note": "Debit card tapped with Google Pay at 9:04 PM Toronto time. Google Wallet names the merchant and the card (••3881); RBC follows 21 s later with the chequing account (********8805), no merchant, and a UTC date (10/17).",
+    "results": [
+        {
+            "id": "da165128-21e9-49f9-b8a8-5f2aa732d983",
+            "result": "PARSED",
+            "amountCents": 3432,
+            "merchantRaw": "FOODIE FRUITIE",
+            "occurredAt": 1792199089433,
+            "source": "GOOGLE_WALLET",
+            "kind": "EXPENSE",
+            "accountLast4": "3881",
+            "accountName": "Royal Bank Debit/Débit"
+        },
+        {
+            "id": "3a52b5a4-ff3e-412a-8627-8205faf24f80",
+            "result": "PARSED",
+            "amountCents": 3432,
+            "merchantRaw": null,
+            "occurredAt": 1792199110114,
+            "source": "RBC_ALERT",
+            "kind": "EXPENSE",
+            "accountLast4": "8805",
+            "accountName": null
+        }
+    ]
+}

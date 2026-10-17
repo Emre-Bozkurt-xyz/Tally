@@ -13,13 +13,14 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase | State |
 | --- | --- |
 | Scaffold (4.2) | Done |
-| Phase 0: raw logger | Installed and running on the phone (S24 Ultra, Android 16). Package names confirmed. **Purchase check still pending** (no fixtures yet). |
+| Phase 0: raw logger | Done for Google Pay + debit: on 2026-10-16 both the Google Wallet and RBC notifications were captured (first fixture). Still unseen: Samsung Pay, physical card, credit card. |
 | Phase 1: manual core | Built. Remaining: place the widget and run the "done when" check on the phone. Ledger, month and category screens checked on the phone; widget installed but not yet placed. |
-| Phase 2 to 6 | Not started. Phase 2 waits for real RBC / wallet notifications. |
+| Phase 2: auto capture | Started. Parsers for the two shapes seen so far (RBC chequing withdrawal, Google Wallet purchase) + golden fixture test. Not wired into the listener yet. |
+| Phase 3 to 6 | Not started. |
 
 What's verified so far:
-- `./gradlew :core:test`: 68 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend).
-- `./gradlew :app:testDebugUnitTest`: 29 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data, quick-entry save and edit, delete and undo, category tree, category edits).
+- `./gradlew :core:test`: 76 tests passing (amount parsing, money formatting, export format, numpad entry, chip ranking, month summary, week spend, parsers, golden fixtures).
+- `./gradlew :app:testDebugUnitTest`: 30 tests passing (Room DAO, 60 s re-post dedupe, source stats, export round trip, extras dump, v1 to v2 migration, seed data, quick-entry save and edit, delete and undo, category tree, category edits, deleting other apps' raw events).
 - `./gradlew :app:lintDebug`: no issues. `assembleDebug` and `assembleRelease` succeed.
 - Debug build installed on the phone (`dev.emre.tally.debug`).
 
@@ -428,7 +429,7 @@ Tasks:
 - [x] Setup checklist screen (section 4.3) with listener health.
 - [x] (Pulled forward from Phase 2) Amount parsing helper, `Amounts`, with tests.
 
-**Done when:** you buy something with Samsung Pay and with the physical card, and both the RBC alert and the wallet notification appear in the raw events screen. **Installed; purchase check still pending.**
+**Done when:** you buy something with Samsung Pay and with the physical card, and both the RBC alert and the wallet notification appear in the raw events screen. **Checked with Google Pay + debit (2026-10-16); Samsung Pay and physical card still to see.** Setup has a "Delete" for raw events from other apps (what "Log all packages" collected).
 
 Leave it running. Everything you buy from now on becomes test data.
 
@@ -473,12 +474,12 @@ Tasks:
 Prerequisite: at least a week of raw events from Phase 0, exported into `core/src/test/resources/fixtures/` (scrub card numbers beyond last 4 first).
 
 **Parsers (in `core`)**
-- [ ] Read the fixtures and write down every distinct notification shape per package (purchase, refund, deposit, withdrawal, e-Transfer, payment to card, declined, promotional junk). Check whether group summaries duplicate the real notification and should be `Ignored`.
-- [ ] `RbcParser`: one regex per shape. Extract amount, merchant (if present), card last4 or account name, and `kind`. Payments to your own credit card from chequing = `TRANSFER`. Declined and promo = `Ignored`.
+- [ ] (Ongoing; 2 shapes so far, documented on each parser.) Read the fixtures and write down every distinct notification shape per package (purchase, refund, deposit, withdrawal, e-Transfer, payment to card, declined, promotional junk). Check whether group summaries duplicate the real notification and should be `Ignored`.
+- [ ] (Started: chequing withdrawal.) `RbcParser`: one regex per shape. Extract amount, merchant (if present), card last4 or account name, and `kind`. Payments to your own credit card from chequing = `TRANSFER`. Declined and promo = `Ignored`.
 - [ ] `SamsungWalletParser`: amount, merchant, card hint.
-- [ ] `GoogleWalletParser`: same; lower priority, but do it in this phase if shapes are simple.
+- [ ] (Started: purchase.) `GoogleWalletParser`: same. Turned out to matter most: with debit, it is the only source of the merchant name.
 - [x] Amount parsing helper: handles `$1,234.56`, `CAD 4.25`, French formats (`4,25 $`, `1 234,56 $`). Done in Phase 0 as `Amounts`; extend its tests with real strings from fixtures.
-- [ ] **Golden tests:** each fixture file (`RawEventExport` format, read with `RawEventExportCodec` and `toRawNotification()`) has a sibling `.expected.json`. A test iterates all fixtures and asserts parser output. Adding a new case = drop two files in a folder.
+- [x] **Golden tests:** (`GoldenFixturesTest`, `@TestFactory`; first fixture `2026-10-16-gwallet-debit-purchase`) each fixture file (`RawEventExport` format, read with `RawEventExportCodec` and `toRawNotification()`) has a sibling `.expected.json`. A test iterates all fixtures and asserts parser output. Adding a new case = drop two files in a folder.
 
 **Normalization (in `core`)**
 - [ ] `MerchantNormalizer.normalize(raw)`:
@@ -632,8 +633,8 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 
 ## 8. Testing strategy
 
-- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest` (68 tests).
-- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest` (29 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
+- **`core` carries the weight.** Parsers, normalizer, dedupe, rules, TOML codec, and matcher are all pure functions with JUnit Jupiter tests (`./gradlew :core:test`). Target: every bug you ever hit becomes a fixture. Today: `AmountsTest`, `MoneyTest`, `RawEventExportTest`, `AmountEntryTest`, `CategoryRankingTest`, `MonthSummaryTest`, `WeekSpendTest`, `ParsersTest`, `GoldenFixturesTest` (76 tests).
+- **App JVM tests on Robolectric** (`./gradlew :app:testDebugUnitTest`) for Room DAOs, repositories and Android-type helpers, with an in-memory Room DB. Today: `RawEventRepositoryTest`, `ExtrasJsonTest`, `DefaultDataTest`, `TallyDatabaseMigrationTest`, `LedgerRepositoryTest`, `CategoryTreeTest`, `CategoryRepositoryTest` (30 tests). Use Room's `useWriterConnection { it.immediateTransaction { } }` for transactions, not `withTransaction`: the latter fails under the driver-based migration helper. Robolectric needs the `--add-opens` flag already set in `app/build.gradle.kts`.
 - **Golden fixtures** are real exported notifications (`RawEventExport` files) and CSV rows. Scrub card numbers beyond last4 before committing (the repo should still be private).
 - **Room migration tests** for every schema version, using the committed schema JSON in `app/schemas/`.
 - **Lint** (`./gradlew :app:lintDebug`) stays at zero issues; suppress only with a comment saying why.
@@ -655,7 +656,8 @@ Prerequisite: at least a week of raw events from Phase 0, exported into `core/sr
 - [ ] **Run Phase 0 on the phone** and confirm the "done when" check.
 - [x] Set `minSdk` to the phone's API level: 36.
 - [x] Exact package names for RBC, Samsung Wallet, Google Wallet: the guesses in `WatchedPackages` match what is installed (`pm list packages`). Samsung also has `com.samsung.android.spayfw` (framework); confirm which one posts the payment notification.
-- [ ] RBC alert wording for each event type (Phase 0 raw logs).
-- [ ] Whether wallets post group-summary notifications that duplicate the real one (`isGroupSummary` is recorded so parsers can decide).
+- [ ] RBC alert wording for each event type. Known so far: chequing withdrawal, "A withdrawal of $34.32 was made from your RBC account ********8805 on 10/17." **The date is UTC** (purchase was 9:04 PM Oct 16 Toronto), so always use the post time. Still to see: credit card purchase, deposit, e-Transfer, payment to card.
+- [ ] Whether wallets post group-summary notifications that duplicate the real one. Google Wallet: no summary for a single purchase (channel `tapandpay.transactions.low`). Samsung Wallet: not seen yet.
 - [ ] Whether RBC's CSV has a stable transaction ID (Phase 5).
-- [ ] Whether chequing alerts distinguish debit purchases, e-Transfers, bill payments, and credit card payments clearly enough to set `kind` automatically, or whether that needs rules.
+- [ ] Whether chequing alerts distinguish debit purchases, e-Transfers, bill payments, and credit card payments clearly enough to set `kind` automatically, or whether that needs rules. So far: a debit purchase is a generic "withdrawal" with no merchant, so it can't be told apart from other withdrawals by the RBC text alone.
+- [ ] **Accounts need several identifiers.** A Google Pay debit purchase shows the card's last 4 (••3881) in the wallet and the chequing account's last 4 (********8805) in the RBC alert. Account matching (dedupe, Phase 2) needs a list of last-4s per account, not one `last4` column (schema v3).

@@ -75,6 +75,16 @@ class RawEventRepositoryTest {
     }
 
     @Test
+    fun `deleting unwatched keeps bank and wallet events`() = runTest {
+        repo.record(event(source = "com.rbc.mobile.android", receivedAt = T0, sbnKey = "1"))
+        repo.record(event(source = "com.huawei.health", receivedAt = T0, sbnKey = "2"))
+        repo.record(event(source = "com.discord", receivedAt = T0, sbnKey = "3"))
+
+        assertEquals(2, repo.deleteUnwatched())
+        assertEquals(listOf("com.rbc.mobile.android"), repo.observeAll().first().map { it.source })
+    }
+
+    @Test
     fun `export round trips through the core format`() = runTest {
         repo.record(event(receivedAt = T0 + 1, sbnKey = "2", extrasJson = """{"android.title":"Hi"}"""))
         repo.record(event(receivedAt = T0, sbnKey = "1", extrasJson = "not json"))
