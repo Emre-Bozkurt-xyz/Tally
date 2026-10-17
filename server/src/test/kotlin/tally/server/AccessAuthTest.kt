@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import tally.core.llm.CategorizeService
+import tally.core.llm.InMemoryCategoryCache
 import tally.core.sync.InMemorySyncStore
 import tally.core.sync.SyncServer
 import java.security.KeyPair
@@ -62,8 +64,12 @@ class AccessAuthTest {
         .apply { commonName?.let { withClaim("common_name", it); withSubject("") } }
         .sign(Algorithm.RSA256(signWith.public as RSAPublicKey, signWith.private as RSAPrivateKey))
 
-    private fun app(databaseUp: Boolean = true, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
-        application { tallyModule(access, { databaseUp }, SyncServer(InMemorySyncStore()), jwks) }
+    private fun app(
+        databaseUp: Boolean = true,
+        categorize: CategorizeService? = null,
+        block: suspend ApplicationTestBuilder.() -> Unit,
+    ) = testApplication {
+        application { tallyModule(access, { databaseUp }, SyncServer(InMemorySyncStore()), jwks, categorize) }
         block()
     }
 
@@ -126,6 +132,32 @@ class AccessAuthTest {
     }
 
     @Test
+    fun `categorize answers from the model, needs access, and says when it's off`() {
+        val body = """{"merchant":"Foodie Fruitie","amountCents":3432,"categories":["Food","Food/Groceries"]}"""
+        val service = CategorizeService(InMemoryCategoryCache(), { _, _ -> "Food/Groceries" })
+        app(categorize = service) {
+            assertEquals(
+                HttpStatusCode.Unauthorized,
+                client.post("/api/categorize") { contentType(ContentType.Application.Json); setBody(body) }.status,
+            )
+            val response = client.post("/api/categorize") {
+                header(ACCESS_JWT_HEADER, token(email = null, commonName = "phone.access"))
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            assertEquals("""{"category":"Food/Groceries","cached":false}""", response.bodyAsText())
+        }
+        app(categorize = null) {
+            val response = client.post("/api/categorize") {
+                header(ACCESS_JWT_HEADER, token())
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+        }
+    }
+
+    @Test
     fun `readiness reports the database`() {
         app(databaseUp = true) {
             assertEquals(HttpStatusCode.OK, client.get("/api/health") { header(ACCESS_JWT_HEADER, token()) }.status)
@@ -150,6 +182,12 @@ class AccessAuthTest {
         assertEquals("https://emre.cloudflareaccess.com", config.access?.issuer)
         assertEquals(null, ServerConfig.fromEnv(mapOf("POSTGRES_PASSWORD" to "x", "ACCESS_DISABLED" to "true")).access)
         assertThrows<IllegalStateException> { ServerConfig.fromEnv(mapOf("ACCESS_DISABLED" to "true")) }
+
+        val base = mapOf("POSTGRES_PASSWORD" to "x", "ACCESS_DISABLED" to "true")
+        assertEquals(null, ServerConfig.fromEnv(base + ("ANTHROPIC_API_KEY" to "")).llm)
+        val llm = ServerConfig.fromEnv(base + ("ANTHROPIC_API_KEY" to "sk-secret")).llm
+        assertEquals(LlmConfig.DEFAULT_MODEL, llm?.model)
+        assertTrue("sk-secret" !in llm.toString())
     }
 
     private companion object {

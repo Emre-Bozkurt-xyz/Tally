@@ -11,6 +11,8 @@ data class ServerConfig(
     val databasePassword: String,
     /** Null only when ACCESS_DISABLED=true, for running locally without Cloudflare. */
     val access: AccessConfig?,
+    /** Null without ANTHROPIC_API_KEY: `/api/categorize` then answers 503 and the phone carries on without. */
+    val llm: LlmConfig? = null,
 ) {
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()): ServerConfig {
@@ -31,8 +33,24 @@ data class ServerConfig(
                         audience = required("ACCESS_AUD"),
                     )
                 },
+                llm = env["ANTHROPIC_API_KEY"]?.takeIf { it.isNotBlank() }?.let { key ->
+                    LlmConfig(
+                        apiKey = key,
+                        model = env["ANTHROPIC_MODEL"]?.takeIf { it.isNotBlank() } ?: LlmConfig.DEFAULT_MODEL,
+                        dailyLimit = env["LLM_DAILY_LIMIT"]?.toInt() ?: 200,
+                    )
+                },
             )
         }
+    }
+}
+
+/** Claude for categorizing unknown merchants. */
+data class LlmConfig(val apiKey: String, val model: String, val dailyLimit: Int) {
+    override fun toString() = "LlmConfig(model=$model, dailyLimit=$dailyLimit)"
+
+    companion object {
+        const val DEFAULT_MODEL = "claude-haiku-5-5"
     }
 }
 

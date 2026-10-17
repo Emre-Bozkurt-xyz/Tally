@@ -24,6 +24,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import org.slf4j.event.Level
+import tally.core.llm.CategorizeRequest
+import tally.core.llm.CategorizeService
+import tally.core.llm.DailyLimitReached
 import tally.core.sync.SyncRequest
 import tally.core.sync.SyncServer
 
@@ -35,13 +38,14 @@ data class MeResponse(val name: String, val kind: String)
 
 /**
  * The HTTP surface. [access] null means local dev without Cloudflare (ACCESS_DISABLED=true);
- * [jwks] is swappable for tests.
+ * [jwks] is swappable for tests. [categorize] null means no LLM (no API key configured).
  */
 fun Application.tallyModule(
     access: AccessConfig?,
     database: DatabaseCheck,
     sync: SyncServer,
     jwks: JwkProvider? = null,
+    categorize: CategorizeService? = null,
 ) {
     install(ContentNegotiation) { json() }
     install(CallLogging) {
@@ -50,6 +54,16 @@ fun Application.tallyModule(
     }
     install(StatusPages) {
         exception<BadRequestException> { call, cause ->
+            call.respond(HttpStatusCode.BadRequest, mapOf("error" to (cause.message ?: "bad request")))
+        }
+        exception<DailyLimitReached> { call, cause ->
+            call.respond(HttpStatusCode.TooManyRequests, mapOf("error" to cause.message))
+        }
+        exception<java.io.IOException> { call, cause ->
+            call.application.environment.log.warn("Upstream call failed: ${cause.message}")
+            call.respond(HttpStatusCode.BadGateway, mapOf("error" to "upstream unavailable"))
+        }
+        exception<IllegalArgumentException> { call, cause ->
             call.respond(HttpStatusCode.BadRequest, mapOf("error" to (cause.message ?: "bad request")))
         }
         exception<Throwable> { call, cause ->
@@ -82,6 +96,14 @@ fun Application.tallyModule(
                 val request = call.receive<SyncRequest>()
                 val response = withContext(Dispatchers.IO) { sync.handle(request) }
                 call.respond(response)
+            }
+            post("/api/categorize") {
+                val request = call.receive<CategorizeRequest>()
+                if (categorize == null) {
+                    call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "no ANTHROPIC_API_KEY on the server"))
+                    return@post
+                }
+                call.respond(withContext(Dispatchers.IO) { categorize.categorize(request) })
             }
             get("/api/me") {
                 val caller = call.caller()

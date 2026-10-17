@@ -72,6 +72,26 @@ interface TransactionDao {
     suspend fun recentMerchantRaws(limit: Int): List<String>
 
     /** Soft delete (and undo), so the change syncs. */
+    /** Recent card purchases still waiting for a category: the ones worth asking the LLM about. */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE NOT deleted AND status = 'CAPTURED' AND categoryId IS NULL AND merchantId IS NOT NULL
+          AND kind = 'EXPENSE' AND occurredAt >= :since
+        ORDER BY occurredAt DESC LIMIT :limit
+        """,
+    )
+    suspend fun awaitingSuggestion(since: Long, limit: Int): List<TransactionEntity>
+
+    /** Sets an LLM suggestion unless you categorized (or handled) it meanwhile. Returns rows changed. */
+    @Query(
+        """
+        UPDATE transactions SET categoryId = :categoryId, categorySource = 'LLM', updatedAt = :now
+        WHERE id = :id AND NOT deleted AND status = 'CAPTURED' AND categoryId IS NULL
+        """,
+    )
+    suspend fun suggestCategory(id: String, categoryId: String, now: Long): Int
+
     @Query("UPDATE transactions SET deleted = :deleted, updatedAt = :updatedAt WHERE id = :id")
     suspend fun setDeleted(id: String, deleted: Boolean, updatedAt: Long)
 

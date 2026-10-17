@@ -16,6 +16,7 @@ import tally.app.R
 import tally.app.data.CapturePipeline
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.ledger.displayAmount
+import tally.core.model.CategorySource
 
 /**
  * The "$34.32 · Foodie Fruitie" notification for a capture that needs a look. Tapping it
@@ -47,7 +48,8 @@ object CaptureNotifier {
         }
 
         val title = "${displayAmount(transaction.amountCents)} · ${captured.merchantName ?: "Card purchase"}"
-        val text = captured.categoryName?.let { "$it · tap to confirm" } ?: "Tap to pick a category"
+        val guess = if (transaction.categorySource == CategorySource.LLM.name) " (suggested)" else ""
+        val text = captured.categoryName?.let { "$it$guess · tap to confirm" } ?: "Tap to pick a category"
         val change = PendingIntent.getActivity(
             context,
             0,
@@ -84,6 +86,11 @@ object CaptureNotifier {
             .build()
         NotificationManagerCompat.from(context).notify(transaction.id, NOTIFICATION_ID, notification)
     }
+
+    /** Whether the capture's notification is still in the shade (not swiped away or handled). */
+    fun isShowing(context: Context, transactionId: String): Boolean =
+        context.getSystemService(NotificationManager::class.java).activeNotifications
+            .any { it.tag == transactionId && it.id == NOTIFICATION_ID }
 
     fun cancel(context: Context, transactionId: String) {
         NotificationManagerCompat.from(context).cancel(transactionId, NOTIFICATION_ID)

@@ -1,6 +1,7 @@
 package tally.app.sync
 
 import android.content.Context
+import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import tally.app.appContainer
+import tally.app.capture.CaptureNotifier
 import tally.app.data.TallyDatabase
 import tally.core.sync.SyncProtocol
 import java.io.IOException
@@ -36,16 +38,25 @@ class SyncManager(
 ) {
     val transport = HttpSyncTransport(settings::currentServer)
     private val client = SyncClient(db, transport, settings, settings::deviceId, clock)
+    private val suggester = CategorySuggester(db, transport::categorize, clock) { captured ->
+        // Only refresh a notification that's still showing; don't resurrect a swiped one.
+        if (CaptureNotifier.isShowing(context, captured.transaction.id)) CaptureNotifier.onCaptured(context, captured)
+    }
 
     sealed interface Outcome {
-        data class Synced(val result: SyncResult) : Outcome
+        data class Synced(val result: SyncResult, val suggested: Int = 0) : Outcome {
+            fun summary() = result.summary() + if (suggested > 0) ", $suggested categories suggested" else ""
+        }
+
         data class Failed(val message: String, val retry: Boolean) : Outcome
     }
 
     suspend fun syncNow(): Outcome {
         if (!settings.currentServer().isComplete) return Outcome.Failed("Sync isn't set up", retry = false)
+        // Before syncing, so the suggestions go up in the same sync.
+        val suggested = suggestCategories()
         val outcome = try {
-            Outcome.Synced(client.sync())
+            Outcome.Synced(client.sync(), suggested)
         } catch (e: CancellationException) {
             throw e
         } catch (e: SyncAuthException) {
@@ -58,10 +69,26 @@ class SyncManager(
         }
         val now = clock.millis()
         when (outcome) {
-            is Outcome.Synced -> settings.recordSuccess(now, outcome.result.summary())
+            is Outcome.Synced -> settings.recordSuccess(now, outcome.summary())
             is Outcome.Failed -> settings.recordFailure(now, outcome.message)
         }
         return outcome
+    }
+
+    /**
+     * Best effort: a server without an API key (503) or at its daily cap (429) just means no
+     * suggestions this time, and any other failure shows up in the sync that follows.
+     */
+    private suspend fun suggestCategories(): Int = try {
+        suggester.suggestPending()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: IOException) {
+        if (e !is ServerHttpException || e.code !in setOf(429, 503)) Log.w(TAG, "No category suggestions: ${e.message}")
+        0
+    } catch (e: SerializationException) {
+        Log.w(TAG, "No category suggestions: ${e.message}")
+        0
     }
 
     /** Queues a sync for when there's a network, after [delaySeconds]. */
@@ -103,6 +130,7 @@ class SyncManager(
     private val connected = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     companion object {
+        private const val TAG = "TallySync"
         private const val SOON = "sync-soon"
         private const val PERIODIC = "sync-periodic"
         const val CHANGE_DELAY_SECONDS = 30L

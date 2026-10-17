@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import tally.core.llm.CategorizeRequest
+import tally.core.llm.CategorizeResponse
 import tally.core.sync.SyncRequest
 import tally.core.sync.SyncResponse
 import java.io.IOException
@@ -18,6 +20,9 @@ data class ServerSettings(val url: String, val clientId: String, val clientSecre
 /** Access refused the service token, or the server isn't behind Access as expected. */
 class SyncAuthException(message: String) : IOException(message)
 
+/** The server answered with an error status. */
+class ServerHttpException(val code: Int, message: String) : IOException(message)
+
 @Serializable
 data class ServerIdentity(val name: String, val kind: String)
 
@@ -28,6 +33,10 @@ data class ServerIdentity(val name: String, val kind: String)
 class HttpSyncTransport(private val settings: suspend () -> ServerSettings) : SyncTransport {
     override suspend fun exchange(request: SyncRequest): SyncResponse =
         json.decodeFromString(call("POST", "/api/sync", json.encodeToString(SyncRequest.serializer(), request)))
+
+    /** A category for a merchant from the server's LLM (cached there per merchant). */
+    suspend fun categorize(request: CategorizeRequest): CategorizeResponse =
+        json.decodeFromString(call("POST", "/api/categorize", json.encodeToString(CategorizeRequest.serializer(), request)))
 
     /** Who the server thinks we are: the "Test connection" button. */
     suspend fun whoAmI(): ServerIdentity = json.decodeFromString(call("GET", "/api/me", body = null))
@@ -60,7 +69,7 @@ class HttpSyncTransport(private val settings: suspend () -> ServerSettings) : Sy
                     throw SyncAuthException("Cloudflare Access refused the service token (HTTP $code)")
                 code !in 200..299 -> {
                     val error = connection.errorStream?.use { it.readBytes().decodeToString() }.orEmpty()
-                    throw IOException("Server error HTTP $code ${error.take(200)}".trim())
+                    throw ServerHttpException(code, "Server error HTTP $code ${error.take(200)}".trim())
                 }
                 !type.startsWith("application/json") ->
                     throw SyncAuthException("Expected JSON from the server, got ${type.ifEmpty { "nothing" }}")

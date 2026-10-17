@@ -37,7 +37,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import tally.app.sync.ServerSettings
 import tally.app.sync.SyncManager
-import tally.app.sync.summary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,7 +101,9 @@ fun SyncScreen(sync: SyncManager, onBack: () -> Unit) {
             Text(
                 "Backs up everything to your Tally server and keeps the web dashboard current. " +
                     "The phone signs in through Cloudflare Access with a service token " +
-                    "(Zero Trust, Access, Service credentials).",
+                    "(Zero Trust, Access, Service credentials). If the server has an Anthropic " +
+                    "key, purchases from merchants Tally doesn't know yet get a suggested " +
+                    "category (only the merchant name, amount and your category names are sent).",
                 style = MaterialTheme.typography.bodyMedium,
             )
             OutlinedTextField(
@@ -144,7 +145,7 @@ fun SyncScreen(sync: SyncManager, onBack: () -> Unit) {
                     onClick = {
                         run {
                             when (val outcome = sync.syncNow()) {
-                                is SyncManager.Outcome.Synced -> outcome.result.summary()
+                                is SyncManager.Outcome.Synced -> outcome.summary()
                                 is SyncManager.Outcome.Failed -> outcome.message
                             }
                         }

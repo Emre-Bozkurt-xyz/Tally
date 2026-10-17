@@ -71,6 +71,8 @@ openssl rand -base64 32   # use as POSTGRES_PASSWORD
 ```
 
 Fill in `POSTGRES_PASSWORD` now; `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` come from step 7.
+`ANTHROPIC_API_KEY` is optional (category suggestions for unknown merchants); add it any
+time and redeploy (`bash scripts/deploy.sh`).
 The server refuses to start without them (unless `ACCESS_DISABLED=true`, which is for local
 development only).
 
@@ -186,6 +188,11 @@ POSTGRES_PASSWORD=dev ACCESS_DISABLED=true DATABASE_URL=jdbc:postgresql://127.0.
 
 ## Failure modes
 
+- **525 SSL handshake failed (Cloudflare)**: Caddy has no certificate for the name. A record
+  that was proxied from the start blocks Let's Encrypt's check (it goes through Cloudflare,
+  which can't reach an origin without a certificate yet). Set the record to DNS only,
+  `sudo systemctl reload caddy`, wait for "certificate obtained successfully" in
+  `journalctl -u caddy`, then set it back to Proxied. Renewals work proxied.
 - **502 from Caddy**: FRP down, wrong `remotePort`, or the container isn't running
   (`docker compose --env-file .env.production -f docker-compose.production.yml ps`).
 - **401 everywhere, even logged in**: `ACCESS_AUD` doesn't match the app's AUD tag, or
