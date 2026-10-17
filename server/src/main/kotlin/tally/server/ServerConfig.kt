@@ -38,6 +38,7 @@ data class ServerConfig(
                         apiKey = key,
                         model = env["ANTHROPIC_MODEL"]?.takeIf { it.isNotBlank() } ?: LlmConfig.DEFAULT_MODEL,
                         dailyLimit = env["LLM_DAILY_LIMIT"]?.toInt() ?: 200,
+                        rulesModel = env["ANTHROPIC_RULES_MODEL"]?.takeIf { it.isNotBlank() } ?: LlmConfig.DEFAULT_RULES_MODEL,
                     )
                 },
             )
@@ -46,11 +47,18 @@ data class ServerConfig(
 }
 
 /** Claude for categorizing unknown merchants. */
-data class LlmConfig(val apiKey: String, val model: String, val dailyLimit: Int) {
-    override fun toString() = "LlmConfig(model=$model, dailyLimit=$dailyLimit)"
+data class LlmConfig(
+    val apiKey: String,
+    val model: String,
+    val dailyLimit: Int,
+    /** For rule suggestions: writing regexes from a merchant list wants a stronger model. */
+    val rulesModel: String = DEFAULT_RULES_MODEL,
+) {
+    override fun toString() = "LlmConfig(model=$model, dailyLimit=$dailyLimit, rulesModel=$rulesModel)"
 
     companion object {
         const val DEFAULT_MODEL = "claude-haiku-5-5"
+        const val DEFAULT_RULES_MODEL = "claude-sonnet-5-5"
     }
 }
 

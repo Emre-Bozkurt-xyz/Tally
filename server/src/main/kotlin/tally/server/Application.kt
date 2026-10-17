@@ -28,6 +28,8 @@ import tally.core.llm.CategorizeService
 import tally.core.llm.DailyLimitReached
 import tally.core.sync.SyncRequest
 import tally.core.sync.SyncServer
+import tally.core.llm.CategoryModel
+import tally.server.web.RuleSuggester
 import tally.server.web.RulesEdits
 import tally.server.web.StatementImport
 import tally.server.web.WebEdits
@@ -55,6 +57,8 @@ fun Application.tallyModule(
     clock: Clock = Clock.systemUTC(),
     /** Must be the hub [sync] announces to (see Main), or the stream stays silent. */
     events: SyncEvents = SyncEvents(),
+    /** The model rule suggestions ask; null without an API key. */
+    suggestModel: CategoryModel? = null,
 ) {
     install(ContentNegotiation) { json() }
     install(CallLogging) {
@@ -119,7 +123,15 @@ fun Application.tallyModule(
                 val caller = call.caller()
                 call.respond(MeResponse(caller.name, caller.kind.name))
             }
-            dashboard(WebEdits(sync, clock), RulesEdits(sync, clock), StatementImport(sync, clock, zone, categorize, this@tallyModule), zone, clock)
+            val rulesEdits = RulesEdits(sync, clock)
+            dashboard(
+                WebEdits(sync, clock),
+                rulesEdits,
+                RuleSuggester(rulesEdits, suggestModel, clock = clock),
+                StatementImport(sync, clock, zone, categorize, this@tallyModule),
+                zone,
+                clock,
+            )
         }
     }
 }

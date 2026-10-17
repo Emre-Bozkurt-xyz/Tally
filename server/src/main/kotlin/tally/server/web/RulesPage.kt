@@ -29,7 +29,7 @@ import tally.core.model.Money
 // and categories one row at a time. Each section re-renders after a save; a row with an error
 // comes back on its own, keeping what you typed.
 
-fun FlowContent.rulesPage(s: Snapshot, edits: RulesEdits, toml: String) {
+fun FlowContent.rulesPage(s: Snapshot, edits: RulesEdits, canAsk: Boolean, toml: String) {
     h1 { +"Rules" }
     p("muted") {
         +"Aliases turn bank text into a merchant name; rules file merchants into categories, first match wins. "
@@ -52,6 +52,34 @@ fun FlowContent.rulesPage(s: Snapshot, edits: RulesEdits, toml: String) {
             button(classes = "quiet") { +"Try" }
         }
         div { id = "try-result" }
+    }
+    div("panel") {
+        h2 { +"Suggestions" }
+        p("muted") {
+            +"Rules worth adding: from how you've filed things, or from Claude (it gets merchant names, their bank text, "
+            +"your categories and existing rules; no amounts). Nothing changes until you tick and add."
+        }
+        div("inline-form") {
+            button(classes = "quiet") {
+                attributes["hx-post"] = "/rules/suggest/history"
+                attributes["hx-target"] = "#suggestions"
+                +"From my history"
+            }
+            button(classes = "quiet") {
+                attributes["hx-post"] = "/rules/suggest/model"
+                attributes["hx-target"] = "#suggestions"
+                attributes["hx-indicator"] = "#suggest-busy"
+                attributes["hx-disabled-elt"] = "this"
+                if (!canAsk) attributes["disabled"] = "disabled"
+                +"Ask Claude"
+            }
+            span("htmx-indicator muted") {
+                id = "suggest-busy"
+                +"Asking Claude (up to a minute)…"
+            }
+            if (!canAsk) span("muted") { +"Needs ANTHROPIC_API_KEY on the server." }
+        }
+        div { id = "suggestions" }
     }
     div("panel") {
         h2 { +"Apply to existing transactions" }
@@ -348,6 +376,71 @@ fun replayHtml(s: Snapshot, changes: List<tally.core.rules.ReplayChange>) = crea
     }
 }
 
+fun suggestionsHtml(shown: RuleSuggester.Shown, fromModel: Boolean) = createHTML().div {
+    if (shown.isEmpty) {
+        p("muted") {
+            +if (fromModel) "Nothing to suggest that passed the checks." else "Nothing yet: no merchant filed the same way ${tally.core.rules.RuleSuggestionRules.MIN_TIMES}+ times without a rule."
+        }
+    } else {
+        form {
+            attributes["hx-post"] = "/rules/suggest/add"
+            attributes["hx-target"] = "#suggestions"
+            shown.aliases.forEachIndexed { i, (a, impact) ->
+                label("suggestion-row") {
+                    input(InputType.checkBox, name = "pick") { value = "a$i" }
+                    input(InputType.hidden, name = "a${i}_match") { value = a.match }
+                    input(InputType.hidden, name = "a${i}_name") { value = a.name }
+                    span {
+                        +"Alias "
+                        span("mono") { +a.match }
+                        +" → ${a.name}"
+                        span("muted") { +" · $impact" }
+                        if (a.why.isNotBlank()) div("muted why") { +a.why }
+                    }
+                }
+            }
+            shown.rules.forEachIndexed { i, (r, impact) ->
+                label("suggestion-row") {
+                    input(InputType.checkBox, name = "pick") { value = "r$i" }
+                    input(InputType.hidden, name = "r${i}_merchant") { value = r.merchant }
+                    input(InputType.hidden, name = "r${i}_category") { value = r.category }
+                    input(InputType.hidden, name = "r${i}_ask") { value = r.ask.toString() }
+                    span {
+                        +"Rule "
+                        span("mono") { +r.merchant }
+                        +" → ${r.category.replace("/", " › ")}"
+                        if (r.ask) span("badge") { +"ask" }
+                        span("muted") { +" · $impact" }
+                        if (r.why.isNotBlank()) div("muted why") { +r.why }
+                    }
+                }
+            }
+            button(classes = "primary") { +"Add selected" }
+        }
+    }
+    if (shown.dropped.isNotEmpty()) {
+        details {
+            summary("muted") { +"${shown.dropped.size} suggestions left out" }
+            shown.dropped.forEach { div("muted why") { +it } }
+        }
+    }
+}
+
+/** After adding: what was added, the refreshed editors (out of band), and what the rules would now do. */
+fun suggestionsAddedHtml(
+    s: Snapshot, edits: RulesEdits, aliases: Int, rules: Int, problems: List<String>, replay: List<tally.core.rules.ReplayChange>,
+): String {
+    val summary = createHTML().div {
+        div(if (problems.isEmpty()) "result ok" else "result error") {
+            +"Added ${aliases - problems.count { it.startsWith("Alias") }} aliases and ${rules - problems.count { it.startsWith("Rule") }} rules."
+            problems.forEach { div { +it } }
+        }
+        if (replay.isNotEmpty()) p { +"Your rules now match ${replay.size} transactions waiting or uncategorized: see Apply to existing below." }
+    }
+    fun oob(html: String, id: String) = html.replaceFirst("id=\"$id\"", "id=\"$id\" hx-swap-oob=\"true\"")
+    return summary + oob(rulesSectionHtml(s, edits), "rules-editor") + oob(aliasesSectionHtml(s, edits), "aliases-editor")
+}
+
 fun replayDoneHtml(count: Int) = createHTML().div("result ok") {
     +"Updated $count transactions. "
     a(href = "/inbox") { +"Open the inbox" }
@@ -433,6 +526,11 @@ button[disabled] { opacity:.35; cursor:default; }
 .strong { font-weight:600; }
 .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 details.panel summary { cursor:pointer; font-weight:600; }
+.suggestion-row { display:flex; gap:.6rem; align-items:flex-start; padding:.45rem 0; border-bottom:1px solid var(--line); cursor:pointer; }
+.suggestion-row input { margin-top:.25rem; }
+.why { font-size:.85rem; }
+.htmx-indicator { display:none; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display:inline; }
 @media (max-width: 900px) {
   .rule-grid, .alias-grid, .category-grid { grid-template-columns: 1fr 1fr; }
   .row-head { display:none; }

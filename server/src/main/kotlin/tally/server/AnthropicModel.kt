@@ -14,16 +14,19 @@ import java.time.Duration
 class AnthropicModel(
     private val apiKey: String,
     private val model: String,
+    /** A category name needs a few tokens; rule suggestions need a page of JSON. */
+    private val maxTokens: Int = 32,
+    private val timeout: Duration = Duration.ofSeconds(30),
     private val endpoint: URI = URI("https://api.anthropic.com/v1/messages"),
     private val http: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(),
 ) : CategoryModel {
     override fun ask(system: String, user: String): String {
         val body = json.encodeToString(
             MessagesRequest.serializer(),
-            MessagesRequest(model = model, maxTokens = 32, system = system, messages = listOf(Message("user", user))),
+            MessagesRequest(model = model, maxTokens = maxTokens, system = system, messages = listOf(Message("user", user))),
         )
         val request = HttpRequest.newBuilder(endpoint)
-            .timeout(Duration.ofSeconds(30))
+            .timeout(timeout)
             .header("x-api-key", apiKey)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")

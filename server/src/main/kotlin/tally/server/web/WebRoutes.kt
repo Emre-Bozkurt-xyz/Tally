@@ -17,6 +17,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import tally.core.rules.SuggestedAlias
+import tally.core.rules.SuggestedRule
 import tally.server.caller
 import java.time.Clock
 import java.time.LocalDate
@@ -24,7 +26,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 
 /** The dashboard: Overview, Ledger, Inbox and Rules. Mounted behind Cloudflare Access. */
-fun Route.dashboard(edits: WebEdits, rules: RulesEdits, statements: StatementImport, zone: ZoneId, clock: Clock) {
+fun Route.dashboard(edits: WebEdits, rules: RulesEdits, suggester: RuleSuggester, statements: StatementImport, zone: ZoneId, clock: Clock) {
     fun today() = LocalDate.now(clock.withZone(zone))
     suspend fun snapshot() = withContext(Dispatchers.IO) { edits.snapshot() }
 
@@ -57,7 +59,7 @@ fun Route.dashboard(edits: WebEdits, rules: RulesEdits, statements: StatementImp
 
     get("/rules") {
         val s = snapshot()
-        call.respondHtml { page("Rules", Tab.RULES, s, call.caller().name) { rulesPage(s, rules, edits.exportToml(s)) } }
+        call.respondHtml { page("Rules", Tab.RULES, s, call.caller().name) { rulesPage(s, rules, suggester.canAsk, edits.exportToml(s)) } }
     }
 
     get("/statements") {
@@ -126,6 +128,34 @@ fun Route.dashboard(edits: WebEdits, rules: RulesEdits, statements: StatementImp
         val form = receiveParameters()
         val s = snapshot()
         html(trialHtml(s, rules.trial(s, form["raw"].orEmpty(), form["amount"].orEmpty())))
+    }
+
+    edit("/rules/suggest/history") {
+        val s = snapshot()
+        html(suggestionsHtml(suggester.fromHistory(s), fromModel = false))
+    }
+
+    edit("/rules/suggest/model") {
+        val shown = withContext(Dispatchers.IO) {
+            runCatching { suggester.fromModel(snapshot()) }
+        }
+        html(shown.fold({ suggestionsHtml(it, fromModel = true) }, { statementErrorHtml("Couldn't get suggestions: ${it.message}") }))
+    }
+
+    edit("/rules/suggest/add") {
+        val form = receiveParameters()
+        val picked = form.getAll("pick").orEmpty().toSet()
+        val aliases = picked.filter { it.startsWith("a") }.mapNotNull { key ->
+            val match = form["${key}_match"] ?: return@mapNotNull null
+            SuggestedAlias(match, form["${key}_name"].orEmpty())
+        }
+        val newRules = picked.filter { it.startsWith("r") }.mapNotNull { key ->
+            val merchant = form["${key}_merchant"] ?: return@mapNotNull null
+            SuggestedRule(merchant, form["${key}_category"].orEmpty(), ask = form["${key}_ask"] == "true")
+        }
+        val problems = withContext(Dispatchers.IO) { suggester.add(aliases, newRules, source()) }
+        val s = snapshot()
+        html(suggestionsAddedHtml(s, rules, aliases.size, newRules.size, problems, rules.replayPlan(s)))
     }
 
     edit("/rules/replay/preview") {
