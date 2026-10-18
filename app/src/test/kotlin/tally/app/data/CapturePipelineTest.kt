@@ -174,6 +174,19 @@ class CapturePipelineTest {
     }
 
     @Test
+    fun `a samsung wallet purchase lands on the account its card names, and its rewards note is ignored`() = runTest {
+        val captured = post(WatchedPackages.SAMSUNG_WALLET, "RBC Visa Card/Carte Visa RBC‡", "PASHA LOUNGE CAD 31.30", t0)
+            as CapturePipeline.Outcome.Captured
+        assertEquals(31_30L, captured.transaction.amountCents)
+        assertEquals("Pasha Lounge", captured.merchantName)
+        assertEquals(DefaultData.accountId("RBC Visa"), captured.transaction.accountId)
+
+        val rewards = post(WatchedPackages.SAMSUNG_WALLET, "Samsung Wallet", "You earned 8 points. Tap here to check your Samsung Rewards points.", t0)
+        assertEquals(CapturePipeline.Outcome.Marked(ParseStatus.IGNORED, "Samsung Rewards points"), rewards)
+        assertEquals(1, active().size)
+    }
+
+    @Test
     fun `reparse picks up events stored before the pipeline existed, in order`() = runTest {
         for ((source, title, text, at) in listOf(
             listOf(WatchedPackages.GOOGLE_WALLET, "FOODIE FRUITIE", "CA\$34.32 with Royal Bank Debit/Débit ••3881", t0),

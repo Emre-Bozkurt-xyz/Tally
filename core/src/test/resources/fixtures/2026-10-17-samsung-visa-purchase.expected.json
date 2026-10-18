@@ -1,0 +1,24 @@
+{
+    "note": "RBC Visa tapped with Samsung Pay. Samsung Wallet posts the purchase (card name as the title, merchant and amount as the text, no last 4), then a Samsung Rewards points note and a blank group summary within a second. No RBC alert came for this credit card purchase.",
+    "results": [
+        {
+            "id": "507e9318-2540-4259-922b-dabaeb173bb8",
+            "result": "PARSED",
+            "amountCents": 3130,
+            "merchantRaw": "PASHA LOUNGE",
+            "occurredAt": 1792289063108,
+            "source": "SAMSUNG_WALLET",
+            "kind": "EXPENSE",
+            "accountLast4": null,
+            "accountName": "RBC Visa Card/Carte Visa RBC‡"
+        },
+        {
+            "id": "c84a5f98-3db5-46c3-aeb6-f15a264ca343",
+            "result": "IGNORED"
+        },
+        {
+            "id": "79683d37-20e6-4a88-9b9d-6fd782b71a57",
+            "result": "IGNORED"
+        }
+    ]
+}

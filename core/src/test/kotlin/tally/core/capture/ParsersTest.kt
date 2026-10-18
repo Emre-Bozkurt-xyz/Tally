@@ -59,4 +59,32 @@ class ParsersTest {
             CaptureParsers.parse(RawNotification(WatchedPackages.SAMSUNG_WALLET, "x", "\$5.00", null, now)),
         )
     }
+
+    private fun samsung(title: String?, text: String?) = RawNotification(WatchedPackages.SAMSUNG_WALLET, title, text, text, now)
+
+    @Test
+    fun `samsung wallet purchase names the merchant and the card`() {
+        val capture = parsed(CaptureParsers.parse(samsung("RBC Visa Card/Carte Visa RBC‡", "TIM HORTONS #1234 CAD 1,004.25")))
+        assertEquals(1_004_25L, capture.amountCents)
+        assertEquals("TIM HORTONS #1234", capture.merchantRaw)
+        assertEquals("RBC Visa Card/Carte Visa RBC‡", capture.accountHint?.accountName)
+        assertNull(capture.accountHint?.last4)
+        assertEquals(4_50L, parsed(CaptureParsers.parse(samsung("Card", "CORNER STORE \$4.50"))).amountCents)
+    }
+
+    @Test
+    fun `samsung rewards and blank summaries are ignored, other text fails`() {
+        assertInstanceOf(ParseResult.Ignored::class.java, CaptureParsers.parse(samsung("Samsung Wallet", "You earned 8 points. Tap here to check your Samsung Rewards points.")))
+        assertInstanceOf(ParseResult.Ignored::class.java, CaptureParsers.parse(samsung(null, null)))
+        assertInstanceOf(ParseResult.Failed::class.java, CaptureParsers.parse(samsung("Samsung Wallet", "Your card was added.")))
+    }
+
+    @Test
+    fun `a card name finds its account`() {
+        val accounts = listOf("visa" to "RBC Visa", "cheq" to "RBC Chequing", "cash" to "Cash")
+        assertEquals("visa", AccountNames.match("RBC Visa Card/Carte Visa RBC‡", accounts))
+        assertEquals("visa", AccountNames.match("rbc visa", accounts))
+        assertNull(AccountNames.match("Royal Bank Debit/Débit", accounts))
+        assertNull(AccountNames.match("‡", accounts))
+    }
 }

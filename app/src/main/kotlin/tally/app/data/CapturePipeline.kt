@@ -4,6 +4,7 @@ import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import tally.core.capture.AccountNames
 import tally.core.capture.Capture
 import tally.core.capture.CaptureParsers
 import tally.core.capture.ParseResult
@@ -89,7 +90,11 @@ class CapturePipeline(
         // Read fresh each time: rules and aliases change rarely, and captures are rare too.
         val normalizer = MerchantNormalizer(db.aliasDao().getActive().mapNotNull { it.toAlias() })
         val categorizer = Categorizer(RulesEngine(db.ruleDao().getActive().map { it.toRule() }))
+        // By last 4 when the notification has one; Samsung Wallet only names the card.
         val accountId = capture.accountHint?.last4?.let { identifiers.accountFor(it) }
+            ?: capture.accountHint?.accountName?.let { name ->
+                AccountNames.match(name, db.accountDao().getActive().map { it.id to it.name })
+            }
         val merchant = capture.merchantRaw?.let { merchantNamed(normalizer.normalize(it), now) }
         val match = deduper.findMatch(capture, accountId, candidatesNear(capture.occurredAt))
 

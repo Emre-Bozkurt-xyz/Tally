@@ -1,0 +1,66 @@
+{
+    "version": 1,
+    "exportedAt": 1792293058149,
+    "events": [
+        {
+            "id": "507e9318-2540-4259-922b-dabaeb173bb8",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1792289063380,
+            "postedAt": 1792289063108,
+            "zoneId": "America/Toronto",
+            "sbnKey": "0|com.samsung.android.spay|-2128889253|null|10493",
+            "channelId": "General",
+            "isGroupSummary": false,
+            "title": "RBC Visa Card/Carte Visa RBC‡",
+            "text": "PASHA LOUNGE CAD 31.30",
+            "bigText": "PASHA LOUNGE CAD 31.30",
+            "extras": {
+                "android.bigText": "PASHA LOUNGE CAD 31.30",
+                "android.infoText": null,
+                "android.showWhen": true,
+                "android.subText": null,
+                "android.template": "android.app.Notification$BigTextStyle",
+                "android.text": "PASHA LOUNGE CAD 31.30",
+                "android.title": "RBC Visa Card/Carte Visa RBC‡",
+                "android.title.big": "RBC Visa Card/Carte Visa RBC‡"
+            }
+        },
+        {
+            "id": "c84a5f98-3db5-46c3-aeb6-f15a264ca343",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1792289063987,
+            "postedAt": 1792289063755,
+            "zoneId": "America/Toronto",
+            "sbnKey": "0|com.samsung.android.spay|1881145348|null|10493",
+            "channelId": "GLOBAL_Rewards",
+            "isGroupSummary": false,
+            "title": "Samsung Wallet",
+            "text": "You earned 8 points. Tap here to check your Samsung Rewards points.",
+            "bigText": "You earned 8 points. Tap here to check your Samsung Rewards points.",
+            "extras": {
+                "android.bigText": "You earned 8 points. Tap here to check your Samsung Rewards points.",
+                "android.template": "android.app.Notification$BigTextStyle",
+                "android.text": "You earned 8 points. Tap here to check your Samsung Rewards points.",
+                "android.title": "Samsung Wallet",
+                "android.title.big": "Samsung Rewards"
+            }
+        },
+        {
+            "id": "79683d37-20e6-4a88-9b9d-6fd782b71a57",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1792289063990,
+            "postedAt": 1792289063758,
+            "zoneId": "America/Toronto",
+            "sbnKey": "0|com.samsung.android.spay|1001|null|10493",
+            "channelId": "Other",
+            "isGroupSummary": true,
+            "title": null,
+            "text": null,
+            "bigText": null,
+            "extras": {
+                "android.text": null,
+                "android.title": null
+            }
+        }
+    ]
+}

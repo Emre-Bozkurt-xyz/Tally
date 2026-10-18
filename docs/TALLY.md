@@ -13,7 +13,7 @@ _Last updated 2026-10-16. Branch `ccr-d73773ad-js0afr`._
 | Phase | State |
 | --- | --- |
 | Scaffold (4.2) | Done |
-| Phase 0: raw logger | Done for Google Pay + debit: on 2026-10-16 both the Google Wallet and RBC notifications were captured (first fixture). Still unseen: Samsung Pay, physical card, credit card. |
+| Phase 0: raw logger | Done for Google Pay + debit: on 2026-10-16 both the Google Wallet and RBC notifications were captured (first fixture). Samsung Pay with the RBC Visa seen on 2026-10-17 (second fixture: card name, merchant and amount, no last 4, no RBC alert; a rewards note and a blank summary are ignored). Still unseen: a physical card tap, RBC credit card alerts, e-Transfers. |
 | Phase 1: manual core | Built. Remaining: place the widget and run the "done when" check on the phone. Ledger, month and category screens checked on the phone; widget installed but not yet placed. |
 | Phase 2: auto capture | Wired end to end: notification → parse → match the wallet/RBC pair → merchant cleanup → memory categorization → capture notification (Change / Ignore / tap to confirm). Parsers know 2 shapes so far (RBC chequing withdrawal, Google Wallet purchase); more as fixtures arrive. Not yet run on a real purchase after wiring. |
 | Phase 3: rules and inbox | Built: rules engine + TOML file (own parser, errors by line), rules / TOML / aliases screens, review inbox with swipe actions and "always do this", transaction detail with tags and splits. Installed; the "done when" check needs a few weeks of real use. |
