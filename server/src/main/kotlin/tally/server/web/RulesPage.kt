@@ -7,7 +7,6 @@ import kotlinx.html.button
 import kotlinx.html.details
 import kotlinx.html.div
 import kotlinx.html.form
-import kotlinx.html.h1
 import kotlinx.html.h2
 import kotlinx.html.id
 import kotlinx.html.input
@@ -30,8 +29,8 @@ import tally.core.model.Money
 // comes back on its own, keeping what you typed.
 
 fun FlowContent.rulesPage(s: Snapshot, edits: RulesEdits, canAsk: Boolean, toml: String) {
-    h1 { +"Rules" }
-    p("muted") {
+    pageHead("Filing", "Rules")
+    p("muted lead") {
         +"Aliases turn bank text into a merchant name; rules file merchants into categories, first match wins. "
         +"Rules marked ask suggest instead of filing (good for people). Changes reach your phone on its next sync."
     }
@@ -502,36 +501,46 @@ private fun plain(cents: Long) = if (cents % 100 == 0L) "${cents / 100}" else "$
 private fun unwrap(html: String) = html.trim().removePrefix("<div>").removeSuffix("</div>").trim()
 
 const val RULES_CSS = """
-.editor { margin: 1rem 0; }
-.row { display:grid; gap:.4rem; align-items:center; padding:.35rem 0; border-bottom:1px solid var(--line); }
-.row-head { display:grid; gap:.4rem; color:var(--muted); font-size:.8rem; padding-bottom:.2rem; border-bottom:1px solid var(--line); }
-.rule-grid { grid-template-columns: minmax(10rem, 2fr) 4.5rem 4.5rem minmax(6rem, 1fr) minmax(9rem, 1.4fr) minmax(6rem, 1fr) 2.5rem auto; }
+.lead { max-width: 60rem; margin-bottom: 1rem; }
+.panel button.quiet:not(.icon) { background:var(--chip); color:var(--ink); }
+.panel button.quiet:not(.icon):hover { background:var(--chip-strong); }
+.panel { background:var(--card); border-radius:24px; padding:1.25rem 1.35rem; box-shadow:var(--shadow); margin: 0 0 1rem; }
+.panel > h2:first-child { margin-top:0; }
+.panel > p.muted { margin-top:-.25rem; }
+.editor { margin: 0 0 1rem; }
+.row { display:grid; gap:.5rem; align-items:center; padding:.5rem 0; border-top:1px solid var(--line); }
+.row-head { display:grid; gap:.5rem; padding:.25rem 0 .5rem; }
+.row-head span { font: 500 10px/1.3 "Geist Mono", monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+.rule-grid { grid-template-columns: minmax(10rem, 2fr) 5rem 5rem minmax(6rem, 1fr) minmax(9rem, 1.4fr) minmax(6rem, 1fr) 3rem auto; }
 .alias-grid { grid-template-columns: minmax(12rem, 2fr) minmax(8rem, 1fr) auto; }
 .category-grid { grid-template-columns: minmax(8rem, 1.5fr) minmax(8rem, 1fr) 7rem 3.5rem auto; }
-.category-grid.child input[name=name] { margin-left:1.25rem; width:calc(100% - 1.25rem); }
+.category-grid.child input[name=name] { margin-left:1.5rem; width:calc(100% - 1.5rem); }
 .row input, .row select { width:100%; }
 .row input.amount { text-align:right; }
-.row-actions { display:flex; gap:.25rem; align-items:center; white-space:nowrap; }
-.row-error { grid-column: 1 / -1; color:var(--over); font-size:.88rem; }
+.row input.mono { font-family: "Geist Mono", monospace; font-size:.85rem; }
+.row-actions { display:flex; gap:.3rem; align-items:center; white-space:nowrap; }
+.row-actions button { padding:.45rem .9rem; }
+.row-error { grid-column: 1 / -1; color:var(--over); font-size:.88rem; padding-left:.3rem; }
 .check { display:flex; justify-content:center; }
-.check input { width:auto; }
-button.icon { padding:.2rem .5rem; color:var(--muted); }
-button.icon.danger:hover { color:var(--over); }
-button[disabled] { opacity:.35; cursor:default; }
-.count-note { font-size:.8rem; margin-left:.25rem; }
-.add-label { margin:.9rem 0 0; font-size:.85rem; }
-.inline-form { display:flex; gap:.5rem; flex-wrap:wrap; }
+button.icon { width:34px; height:34px; padding:0; background:transparent; color:var(--muted); }
+button.icon:hover { background:var(--chip); color:var(--ink); }
+button.icon.danger:hover { background:var(--over-soft); color:var(--over); }
+.count-note { font: 500 10px/1.3 "Geist Mono", monospace; letter-spacing:.08em; text-transform:uppercase; margin-left:.35rem; }
+.add-label { margin:1.1rem 0 .1rem; font: 500 10px/1.3 "Geist Mono", monospace !important; letter-spacing:.12em; text-transform:uppercase; }
+.inline-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
 .inline-form input[name=raw] { flex:1; min-width:14rem; }
-.inline-form input.amount { width:6rem; }
+.inline-form input.amount { width:7rem; }
 .strong { font-weight:600; }
-.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
-details.panel summary { cursor:pointer; font-weight:600; }
-.suggestion-row { display:flex; gap:.6rem; align-items:flex-start; padding:.45rem 0; border-bottom:1px solid var(--line); cursor:pointer; }
-.suggestion-row input { margin-top:.25rem; }
+details.panel summary { cursor:pointer; font-weight:600; letter-spacing:-.01em; }
+details.panel[open] summary { margin-bottom:.75rem; }
+.toml textarea { width:100%; min-height:28rem; font:13px/1.6 "Geist Mono", monospace; border-radius:18px; padding:1rem; tab-size:4; }
+.toml .actions { display:flex; gap:.5rem; align-items:flex-start; margin:.75rem 0 .25rem; flex-wrap:wrap; }
+.suggestion-row { display:flex; gap:.8rem; align-items:flex-start; padding:.7rem 0; border-top:1px solid var(--line); cursor:pointer; }
+.suggestion-row:first-child { border-top:none; }
+.suggestion-row input { margin-top:.1rem; }
 .why { font-size:.85rem; }
-.htmx-indicator { display:none; }
-.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display:inline; }
-@media (max-width: 900px) {
+#suggestions form > button.primary, #replay > button.primary { margin-top:.9rem; }
+@media (max-width: 1000px) {
   .rule-grid, .alias-grid, .category-grid { grid-template-columns: 1fr 1fr; }
   .row-head { display:none; }
   .row input.mono, .row-actions { grid-column: 1 / -1; }

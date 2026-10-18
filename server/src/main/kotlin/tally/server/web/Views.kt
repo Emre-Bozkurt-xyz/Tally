@@ -11,7 +11,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 /** What the overview page shows for one month. */
-class Overview(val snapshot: Snapshot, val month: YearMonth, today: LocalDate) {
+class Overview(val snapshot: Snapshot, val month: YearMonth, val today: LocalDate) {
     val summary = MonthSummary.of(month, snapshot.entries, snapshot::parentOf)
     val lastMonth = MonthSummary.of(month.minusMonths(1), snapshot.entries, snapshot::parentOf)
 
@@ -29,7 +29,11 @@ class Overview(val snapshot: Snapshot, val month: YearMonth, today: LocalDate) {
     val cumulative: List<Long?> = running(month, until = if (YearMonth.from(today) == month) today.dayOfMonth else null)
     val cumulativeLast: List<Long?> = running(month.minusMonths(1), until = null)
 
-    val months: List<MonthTotals> = Trends.months(snapshot.entries, month, count = 6)
+    /** A year of months, oldest first; the chart shows the last 6 or all 12. */
+    val months: List<MonthTotals> = Trends.months(snapshot.entries, month, count = 12)
+
+    /** The month's latest transactions, newest first. */
+    val recent = snapshot.transactions.filter { YearMonth.from(snapshot.date(it)) == month }.take(8)
     val topMerchants = Trends.topMerchants(snapshot.entries, month.atDay(1), month.atEndOfMonth(), limit = 8)
 
     private fun running(m: YearMonth, until: Int?): List<Long?> {

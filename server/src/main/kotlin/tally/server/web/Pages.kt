@@ -5,19 +5,19 @@ import kotlinx.html.HTML
 import kotlinx.html.InputType
 import kotlinx.html.TBODY
 import kotlinx.html.a
+import kotlinx.html.aside
 import kotlinx.html.body
 import kotlinx.html.button
 import kotlinx.html.canvas
 import kotlinx.html.classes
 import kotlinx.html.div
 import kotlinx.html.form
-import kotlinx.html.h1
 import kotlinx.html.h2
 import kotlinx.html.head
-import kotlinx.html.header
 import kotlinx.html.id
 import kotlinx.html.input
 import kotlinx.html.label
+import kotlinx.html.link
 import kotlinx.html.main
 import kotlinx.html.meta
 import kotlinx.html.nav
@@ -31,7 +31,6 @@ import kotlinx.html.style
 import kotlinx.html.table
 import kotlinx.html.tbody
 import kotlinx.html.td
-import kotlinx.html.textArea
 import kotlinx.html.tfoot
 import kotlinx.html.th
 import kotlinx.html.thead
@@ -55,19 +54,27 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.absoluteValue
 
 // Server-rendered pages. HTMX does the inline edits (each POST returns the fragment to swap
-// in); Chart.js draws the two charts. Both load pinned versions from jsDelivr.
+// in); Chart.js draws the charts. Both load pinned versions from jsDelivr. The look lives in
+// Style.kt.
 
 private const val HTMX = "https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"
 private const val CHART_JS = "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
 
 private val dayFormat = DateTimeFormatter.ofPattern("EEE MMM d", Locale.CANADA)
+private val dayHeader = DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.CANADA)
 private val monthFormat = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.CANADA)
+private val monthName = DateTimeFormatter.ofPattern("MMMM", Locale.CANADA)
 private val shortMonth = DateTimeFormatter.ofPattern("MMM", Locale.CANADA)
 
-enum class Tab(val path: String, val label: String) {
-    OVERVIEW("/", "Overview"), LEDGER("/ledger", "Ledger"), INBOX("/inbox", "Inbox"), RULES("/rules", "Rules"), STATEMENTS("/statements", "Statements"),
+enum class Tab(val path: String, val label: String, val icon: String) {
+    OVERVIEW("/", "Overview", "home"),
+    LEDGER("/ledger", "Activity", "activity"),
+    INBOX("/inbox", "Inbox", "inbox"),
+    RULES("/rules", "Rules", "wand"),
+    STATEMENTS("/statements", "Statements", "file"),
 }
 
 fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean = false, content: FlowContent.() -> Unit) {
@@ -75,6 +82,7 @@ fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean
         meta(charset = "utf-8")
         meta(name = "viewport", content = "width=device-width, initial-scale=1")
         title("$title · Tally")
+        link(rel = "preload", href = "/assets/geist.ttf") { attributes["as"] = "font"; attributes["crossorigin"] = "" }
         style { unsafe { +(CSS + RULES_CSS) } }
         script(src = HTMX) {}
         if (charts) script(src = CHART_JS) {}
@@ -85,24 +93,31 @@ fun HTML.page(title: String, tab: Tab, s: Snapshot, who: String, charts: Boolean
         attributes["data-source"] = source
         attributes["data-live"] = if (tab == Tab.RULES || tab == Tab.STATEMENTS) "banner" else "auto"
         attributes["hx-headers"] = """{"X-Tally-Source":"$source"}"""
-        header {
-            a(href = "/", classes = "brand") { +"Tally" }
-            nav {
-                Tab.entries.forEach { t ->
-                    a(href = t.path, classes = if (t == tab) "active" else null) {
-                        +t.label
-                        if (t == Tab.INBOX && s.needsReview.isNotEmpty()) span("count") { +"${s.needsReview.size}" }
+        div("shell") {
+            aside("sidebar") {
+                a(href = "/", classes = "brand") {
+                    unsafe { +MARK_SVG }
+                    +"Tally"
+                }
+                nav("nav") {
+                    Tab.entries.forEach { t ->
+                        a(href = t.path, classes = if (t == tab) "active" else null) {
+                            attributes["aria-label"] = t.label
+                            icon(t.icon)
+                            span("label") { +t.label }
+                            if (t == Tab.INBOX && s.needsReview.isNotEmpty()) span("count") { +"${s.needsReview.size}" }
+                        }
                     }
                 }
+                div("who") { monoLabel(who) }
             }
-            span("who") { +who }
+            main { content() }
         }
         div("live-banner") {
             attributes["hidden"] = "hidden"
             +"Changed on another device. "
             a(href = "") { +"Refresh" }
         }
-        main { content() }
         script { unsafe { +LIVE_JS } }
     }
 }
@@ -123,82 +138,167 @@ private const val LIVE_JS = """
 })();
 """
 
+/** The key that colors an avatar: the top-level category, so a group shares a tint (as on the phone). */
+private fun Snapshot.avatarKey(categoryId: String?): String? = categoryId?.let { parentOf(it) ?: it }
+
 // ---------- Overview ----------
 
 fun FlowContent.overview(o: Overview) {
     val s = o.snapshot
-    div("month-nav") {
-        a(href = "/?month=${o.month.minusMonths(1)}") { +"‹" }
-        h1 { +o.month.format(monthFormat) }
-        a(href = "/?month=${o.month.plusMonths(1)}") { +"›" }
-    }
-    div("cards") {
-        card("Spent", Money.format(o.summary.spentCents), "Last month ${Money.format(o.lastMonth.spentCents)}")
-        card("Income", Money.format(o.summary.incomeCents), null)
-        o.budgetCents?.let { budget ->
-            val left = budget - o.summary.spentCents
-            card(
-                "Budget",
-                if (left >= 0) "${Money.format(left)} left" else "${Money.format(-left)} over",
-                "of ${Money.format(budget)}",
-                o.status(o.summary.spentCents, budget),
-            )
-        }
-        if (s.needsReview.isNotEmpty()) {
-            div("card") {
-                div("label") { +"To review" }
-                div("value") { a(href = "/inbox") { +"${s.needsReview.size}" } }
-            }
+    val current = o.month == YearMonth.from(o.today)
+    pageHead(if (current) "This month" else "Looking back", o.month.format(monthFormat)) {
+        a(href = "/?month=${o.month.minusMonths(1)}", classes = "round") { attributes["aria-label"] = "Previous month"; icon("back") }
+        a(href = "/?month=${o.month.plusMonths(1)}", classes = "round${if (current) " disabled" else ""}") {
+            attributes["aria-label"] = "Next month"
+            icon("forward")
         }
     }
 
-    div("grid") {
-        div("panel") {
-            h2 { +"By category" }
+    div("overview") {
+        // The hero: spent this month, against the budget with a tick for an even pace.
+        div("hero span-7") {
+            div("row-between") {
+                monoLabel("Spent in ${o.month.format(monthName)}")
+                if (current) monoLabel("Day ${o.today.dayOfMonth} of ${o.month.lengthOfMonth()}")
+            }
+            div("big") { amount(o.summary.spentCents) }
+            o.budgetCents?.let { budget ->
+                val left = budget - o.summary.spentCents
+                div("track") {
+                    div("fill ${o.status(o.summary.spentCents, budget)?.name?.lowercase().orEmpty()}") {
+                        style = "width:${pct(o.summary.spentCents, budget)}%"
+                    }
+                    if (current) div("tick") { style = "left:${pct(o.today.dayOfMonth.toLong(), o.month.lengthOfMonth().toLong())}%" }
+                }
+            }
+            div("row-between note") {
+                span {
+                    val budget = o.budgetCents
+                    when {
+                        budget == null -> span("muted") { +"No budget set" }
+                        budget >= o.summary.spentCents -> {
+                            +"${Money.format(budget - o.summary.spentCents)} left"
+                            span("muted") { +" of ${Money.format(budget)}" }
+                        }
+                        else -> {
+                            +"${Money.format(o.summary.spentCents - budget)} over"
+                            span("muted") { +" of ${Money.format(budget)}" }
+                        }
+                    }
+                }
+                paceNote(o)
+            }
+        }
+        div("stack span-5") {
+            div("card stat") {
+                monoLabel("Came in")
+                div("value") { amount(o.summary.incomeCents) }
+                div("sub") { +"Income this month" }
+            }
+            if (s.needsReview.isNotEmpty()) {
+                a(href = "/inbox", classes = "card stat attention") {
+                    monoLabel("To review")
+                    div("value") { +"${s.needsReview.size}" }
+                    div("sub") { +"Captured purchases waiting for a yes →" }
+                }
+            } else {
+                div("card stat") {
+                    monoLabel("Last month")
+                    div("value") { amount(o.lastMonth.spentCents) }
+                    div("sub") { +"Spent in ${o.month.minusMonths(1).format(monthName)}" }
+                }
+            }
+        }
+
+        div("card span-8") {
+            div("card-head") {
+                monoLabel("Spending")
+                div("segmented") {
+                    attributes["role"] = "tablist"
+                    listOf("month" to "Month", "six" to "6 months", "year" to "12 months").forEachIndexed { i, (key, text) ->
+                        button(classes = if (i == 0) "on" else null) {
+                            attributes["type"] = "button"
+                            attributes["data-range"] = key
+                            +text
+                        }
+                    }
+                }
+            }
+            div("chart-box") { canvas { id = "spending" } }
+            div("legend mono-label") {
+                id = "legend"
+                span { span("swatch") { }; +o.month.format(monthName) }
+                span { span("swatch dashed") { }; +o.month.minusMonths(1).format(monthName) }
+            }
+        }
+        div("card span-4") {
+            div("card-head") {
+                monoLabel("Where it went")
+                a(href = "/ledger?from=${o.month.atDay(1)}&to=${o.month.atEndOfMonth()}", classes = "link") { +"All" }
+            }
             if (o.summary.categories.isEmpty()) p("muted") { +"Nothing spent this month yet." }
-            val max = o.summary.categories.maxOfOrNull { maxOf(it.cents, o.budgetOf(it.categoryId) ?: 0) }?.coerceAtLeast(1) ?: 1
             o.summary.categories.forEach { total ->
                 val budget = o.budgetOf(total.categoryId)
                 val status = o.status(total.cents, budget)
-                div("bar-row") {
-                    a(href = ledgerLink(o.month, total.categoryId ?: LedgerQuery.UNCATEGORIZED), classes = "bar-label") { +s.label(total.categoryId) }
-                    div("bar-track") {
-                        div("bar ${status?.name?.lowercase().orEmpty()}") { style = "width:${pct(total.cents, max)}%" }
-                        budget?.let { div("budget-mark") { style = "left:${pct(it, max)}%" } }
-                    }
-                    span("bar-value") {
-                        +Money.format(total.cents)
+                val name = s.label(total.categoryId)
+                a(href = ledgerLink(o.month, total.categoryId ?: LedgerQuery.UNCATEGORIZED), classes = "cat-row") {
+                    avatar(name, total.categoryId, "sm")
+                    span("title") { +name }
+                    span {
+                        amount(total.cents)
                         budget?.let { span("muted") { +" / ${Money.format(it)}" } }
+                    }
+                    div("track thin") {
+                        div("fill ${status?.name?.lowercase().orEmpty()}") {
+                            style = "width:${pct(total.cents, budget ?: o.summary.spentCents.coerceAtLeast(1))}%"
+                        }
                     }
                 }
                 total.children.forEach { child ->
-                    div("bar-row child") {
-                        a(href = ledgerLink(o.month, child.categoryId ?: LedgerQuery.UNCATEGORIZED), classes = "bar-label") {
-                            +(child.categoryId?.let { s.categoriesById[it]?.name } ?: "Other")
-                        }
-                        div("bar-track") { div("bar") { style = "width:${pct(child.cents, max)}%" } }
-                        span("bar-value") { +Money.format(child.cents) }
+                    a(href = ledgerLink(o.month, child.categoryId ?: LedgerQuery.UNCATEGORIZED), classes = "cat-row child") {
+                        span { +(child.categoryId?.let { s.categoriesById[it]?.name } ?: "Other") }
+                        amount(child.cents)
                     }
                 }
             }
         }
-        div("panel") {
-            h2 { +"Day by day" }
-            canvas { id = "cumulative" }
-            h2 { +"Last 6 months" }
-            canvas { id = "months" }
-        }
-        div("panel") {
-            h2 { +"Top merchants" }
-            if (o.topMerchants.isEmpty()) p("muted") { +"No purchases with a merchant yet." }
-            table("compact") {
-                tbody {
-                    o.topMerchants.forEach { m ->
-                        tr {
-                            td { +(s.merchantsById[m.merchantId]?.name ?: "?") }
-                            td("muted num") { +"${m.count}×" }
-                            td("num") { +Money.format(m.cents) }
+
+        div("card span-8") {
+            div("card-head") {
+                monoLabel("Recent")
+                a(href = "/ledger?from=${o.month.atDay(1)}&to=${o.month.atEndOfMonth()}", classes = "link") { +"See all" }
+            }
+            if (o.recent.isEmpty()) p("muted") { +"Nothing logged this month." }
+            div("rows") {
+                o.recent.forEach { t ->
+                    val name = s.merchantName(t)
+                    div("r") {
+                        avatar(name, s.avatarKey(t.categoryId))
+                        div("grow") {
+                            div("title") { +name }
+                            div("sub") { +"${s.label(t.categoryId)} · ${s.date(t).format(dayFormat)}" }
                         }
+                        div("end") {
+                            amount(t.amountCents)
+                            if (t.status == TransactionStatus.CAPTURED.name) pill("Review", "warn")
+                        }
+                    }
+                }
+            }
+        }
+        div("card span-4") {
+            div("card-head") { monoLabel("Top merchants") }
+            if (o.topMerchants.isEmpty()) p("muted") { +"No purchases with a merchant yet." }
+            div("rows") {
+                o.topMerchants.forEachIndexed { i, m ->
+                    val name = s.merchantsById[m.merchantId]?.name ?: "?"
+                    div("r") {
+                        span("mono-label") { +"%02d".format(i + 1) }
+                        div("grow") {
+                            div("title") { +name }
+                            div("sub") { +(if (m.count == 1) "1 purchase" else "${m.count} purchases") }
+                        }
+                        amount(m.cents)
                     }
                 }
             }
@@ -220,15 +320,16 @@ fun FlowContent.overview(o: Overview) {
     script { unsafe { +"const tally = ${Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), data)};\n$CHARTS_JS" } }
 }
 
-private fun FlowContent.card(label: String, value: String, sub: String?, status: BudgetStatus? = null) {
-    div("card ${status?.name?.lowercase().orEmpty()}") {
-        div("label") { +label }
-        div("value") { +value }
-        sub?.let { div("sub") { +it } }
-    }
+/** "↓ 12% vs Sep": spending so far against the same day last month (or the whole of it, looking back). */
+private fun FlowContent.paceNote(o: Overview) {
+    val day = if (o.month == YearMonth.from(o.today)) o.today.dayOfMonth else o.month.lengthOfMonth()
+    val before = o.cumulativeLast.getOrNull(minOf(day, o.cumulativeLast.size) - 1) ?: return
+    if (before <= 0) return
+    val change = (o.summary.spentCents - before) * 100 / before
+    pill("${if (change > 0) "↑" else "↓"} ${change.absoluteValue}% vs ${o.month.minusMonths(1).format(shortMonth)}", if (change > 0) "warn" else "good")
 }
 
-private fun pct(part: Long, whole: Long) = "%.1f".format(Locale.ROOT, 100.0 * part.coerceAtLeast(0) / whole)
+private fun pct(part: Long, whole: Long) = "%.1f".format(Locale.ROOT, (100.0 * part.coerceAtLeast(0) / whole.coerceAtLeast(1)).coerceAtMost(100.0))
 
 private fun ledgerLink(month: YearMonth, categoryId: String) =
     "/ledger?from=${month.atDay(1)}&to=${month.atEndOfMonth()}&category=$categoryId"
@@ -237,22 +338,23 @@ private fun ledgerLink(month: YearMonth, categoryId: String) =
 
 fun FlowContent.ledger(s: Snapshot, q: LedgerQuery) {
     val rows = q.apply(s)
-    form(action = "/ledger", classes = "filters") {
-        label { +"From"; input(InputType.date, name = "from") { value = q.from.toString() } }
-        label { +"To"; input(InputType.date, name = "to") { value = q.to.toString() } }
+    pageHead("${q.from.format(dayFormat)} – ${q.to.format(dayFormat)}", "Activity")
+    form(action = "/ledger", classes = "filters card") {
+        label { span { +"From" }; input(InputType.date, name = "from") { value = q.from.toString() } }
+        label { span { +"To" }; input(InputType.date, name = "to") { value = q.to.toString() } }
         label {
-            +"Category"
+            span { +"Category" }
             select {
                 name = "category"
                 option { value = ""; +"Any" }
                 option { value = LedgerQuery.UNCATEGORIZED; selected = q.categoryId == LedgerQuery.UNCATEGORIZED; +"Uncategorized" }
                 s.categoryTree.forEach { c ->
-                    option { value = c.id; selected = q.categoryId == c.id; +(if (c.parentId == null) c.name else "  ${c.name}") }
+                    option { value = c.id; selected = q.categoryId == c.id; +(if (c.parentId == null) c.name else "   ${c.name}") }
                 }
             }
         }
         label {
-            +"Account"
+            span { +"Account" }
             select {
                 name = "account"
                 option { value = ""; +"Any" }
@@ -261,7 +363,7 @@ fun FlowContent.ledger(s: Snapshot, q: LedgerQuery) {
         }
         if (s.tags.isNotEmpty()) {
             label {
-                +"Tag"
+                span { +"Tag" }
                 select {
                     name = "tag"
                     option { value = ""; +"Any" }
@@ -269,38 +371,53 @@ fun FlowContent.ledger(s: Snapshot, q: LedgerQuery) {
                 }
             }
         }
-        label { +"Search"; input(InputType.search, name = "q") { value = q.text.orEmpty(); placeholder = "Merchant or note" } }
-        button(classes = "primary") { +"Filter" }
+        label("search") { span { +"Search" }; input(InputType.search, name = "q") { value = q.text.orEmpty(); placeholder = "Merchant or note" } }
+        button(classes = "primary") { icon("search"); +"Filter" }
     }
     val shown = rows.take(LEDGER_LIMIT)
-    table("ledger") {
-        thead { tr { th { +"Date" }; th { +"Merchant" }; th { +"Category" }; th(classes = "hide-sm") { +"Account" }; th(classes = "num") { +"Amount" } } }
-        tbody { shown.forEach { ledgerRow(s, it) } }
-        tfoot {
-            tr {
-                td { colSpan = "3"; +("${rows.size} transactions" + if (rows.size > shown.size) " (first $LEDGER_LIMIT shown)" else "") }
-                td("hide-sm") {}
-                td("num") { +Money.format(rows.sumOf { it.amountCents }) }
+    div("card") {
+        table("ledger") {
+            thead { tr { th { +"Merchant" }; th { +"Category" }; th(classes = "hide-sm") { +"Account" }; th(classes = "num") { +"Amount" } } }
+            tbody {
+                shown.groupBy { s.date(it) }.forEach { (date, day) ->
+                    tr("day") {
+                        td { colSpan = "3"; monoLabel(dayLabel(date)) }
+                        val spent = day.filter { it.kind == Kind.EXPENSE.name }.sumOf { it.amountCents }
+                        td("num") { if (spent != 0L) monoLabel(Money.format(spent)) }
+                    }
+                    day.forEach { ledgerRow(s, it) }
+                }
+            }
+            tfoot {
+                tr {
+                    td { colSpan = "2"; +("${rows.size} transactions" + if (rows.size > shown.size) " (first $LEDGER_LIMIT shown)" else "") }
+                    td("hide-sm") {}
+                    td("num") { amount(rows.sumOf { it.amountCents }) }
+                }
             }
         }
     }
 }
 
+private fun dayLabel(date: LocalDate): String = date.format(dayHeader)
+
 private const val LEDGER_LIMIT = 500
 
 fun TBODY.ledgerRow(s: Snapshot, t: TransactionRow) {
     tr(if (t.status == TransactionStatus.CAPTURED.name) "captured" else null) {
-        td("nowrap") { +s.date(t).format(dayFormat) }
-        td {
-            +s.merchantName(t)
-            t.note?.takeIf { it != s.merchantName(t) }?.let { span("muted note") { +" $it" } }
-            s.tagsByTransaction[t.id].orEmpty().forEach { span("tag") { +it.name } }
-            if (s.splits[t.id] != null) span("tag") { +"split" }
+        td("who-cell") {
+            val name = s.merchantName(t)
+            avatar(name, s.avatarKey(t.categoryId), "sm")
+            div {
+                span("title") { +name }
+                s.tagsByTransaction[t.id].orEmpty().forEach { span("tag") { +"#${it.name}" } }
+                if (s.splits[t.id] != null) span("tag") { +"split" }
+                t.note?.takeIf { it != name }?.let { div("note") { +it } }
+            }
         }
         td { categorySelect(s, t, "/ledger/${t.id}/category", target = "closest tr") }
         td("hide-sm muted") { +(t.accountId?.let { s.accountsById[it]?.name } ?: "") }
-        // Money in shows as +$12.00; money out without a sign.
-        td(if (t.amountCents < 0) "num income" else "num") { +(if (t.amountCents < 0) "+${Money.format(-t.amountCents)}" else Money.format(t.amountCents)) }
+        td("num") { amount(t.amountCents) }
     }
 }
 
@@ -332,56 +449,73 @@ private fun FlowContent.categorySelect(s: Snapshot, t: TransactionRow, post: Str
 // ---------- Inbox ----------
 
 fun FlowContent.inbox(s: Snapshot) {
-    h1 { +"Inbox" }
+    pageHead(if (s.needsReview.isEmpty()) "Nothing waiting" else "${s.needsReview.size} waiting", "Inbox")
     if (s.needsReview.isEmpty()) {
-        p("muted") { +"Nothing to review. Captures that need a look show up here and on your phone." }
+        div("card") { p("muted") { +"Nothing to review. Captures that need a look show up here and on your phone." } }
         return
     }
-    p("muted") { +"Captured purchases waiting for you. Changes reach your phone on its next sync." }
+    p("muted") { +"Captured purchases waiting for you. Changes reach your phone right away while Tally is open, otherwise on its next sync." }
     div("inbox") { s.needsReview.forEach { inboxItem(s, it) } }
 }
 
 fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow) {
-    div("item") {
+    div("card item") {
         id = "item-${t.id}"
-        div("item-main") {
-            div("amount") { +Money.format(t.amountCents) }
-            div {
-                div("merchant") { +s.merchantName(t) }
-                div("muted") {
+        val name = s.merchantName(t)
+        div("item-top") {
+            avatar(name, s.avatarKey(t.categoryId))
+            div("grow") {
+                attributes["style"] = "flex:1;min-width:0"
+                div("merchant") { +name }
+                div("details") {
                     +s.date(t).format(dayFormat)
                     t.accountId?.let { s.accountsById[it] }?.let { +" · ${it.name}" }
-                    t.merchantRaw?.takeIf { it != s.merchantName(t) }?.let { +" · $it" }
+                    t.merchantRaw?.takeIf { it != name }?.let { span("mono") { +" · $it" } }
+                }
+            }
+            amount(t.amountCents, "lg")
+        }
+        val settling = s.settles(t)
+        div("suggestion") {
+            when {
+                settling != null -> {
+                    monoLabel("Settles")
+                    span("what") { +"Settles ${settling.owedBy}'s ${Money.format(settling.amountCents)}" }
+                    pill("owed to you", "good")
+                }
+                t.categoryId != null -> {
+                    monoLabel("Suggested")
+                    span("what") {
+                        +s.label(t.categoryId)
+                        if (t.amountCents < 0 && !s.isIncomeCategory(t.categoryId)) span("muted") { +" (money back)" }
+                    }
+                    when (t.categorySource) {
+                        CategorySource.RULE.name -> pill("your default")
+                        CategorySource.LLM.name -> pill("from Claude")
+                        CategorySource.MEMORY.name -> pill("from memory")
+                    }
+                }
+                else -> {
+                    monoLabel("Category")
+                    span("what muted") { +(if (t.amountCents < 0) "Money in: income, or what it pays back?" else "None yet") }
                 }
             }
         }
         div("item-actions") {
-            val settling = s.settles(t)
             if (settling != null) {
-                span("suggestion") {
-                    +"Settles ${settling.owedBy}'s ${Money.format(settling.amountCents)}"
-                    span("badge") { +"owed to you" }
-                }
                 button(classes = "primary") {
                     attributes["hx-post"] = "/inbox/${t.id}/settle/${settling.splitId}"
                     attributes["hx-target"] = "#item-${t.id}"
                     attributes["hx-swap"] = "outerHTML"
+                    icon("check")
                     +"Settle"
                 }
             } else if (t.categoryId != null) {
-                span("suggestion") {
-                    +s.label(t.categoryId)
-                    if (t.amountCents < 0 && !s.isIncomeCategory(t.categoryId)) span("muted") { +" (money back)" }
-                    when (t.categorySource) {
-                        CategorySource.RULE.name -> span("badge") { +"your default" }
-                        CategorySource.LLM.name -> span("badge") { +"suggested" }
-                        CategorySource.MEMORY.name -> span("badge") { +"from memory" }
-                    }
-                }
                 button(classes = "primary") {
                     attributes["hx-post"] = "/inbox/${t.id}/confirm"
                     attributes["hx-target"] = "#item-${t.id}"
                     attributes["hx-swap"] = "outerHTML"
+                    icon("check")
                     +"Confirm"
                 }
             }
@@ -397,14 +531,17 @@ fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow) {
     }
 }
 
-fun inboxDoneHtml(message: String): String = createHTML().div("item done") { +message }
+fun inboxDoneHtml(message: String): String = createHTML().div("card item done") {
+    icon("check")
+    +message
+}
 
 // ---------- Statements ----------
 
 fun FlowContent.statements() {
-    h1 { +"Statements" }
+    pageHead("RBC chequing and Visa", "Statements")
     p("muted") {
-        +"Upload an RBC statement PDF (chequing or credit card). Tally checks it against what it captured: "
+        +"Upload a statement PDF. Tally checks it against what it captured: "
         +"matching purchases take the statement's final amount, ones it never saw are added "
         +"(to the inbox unless a rule or merchant memory knows the category), and anything missing from the statement is listed. "
         +"You see all of it before anything is saved. Importing the same statement twice changes nothing."
@@ -413,6 +550,7 @@ fun FlowContent.statements() {
         attributes["hx-post"] = "/statements/preview"
         attributes["hx-encoding"] = "multipart/form-data"
         attributes["hx-target"] = "#statement"
+        icon("upload")
         input(InputType.file, name = "pdf") {
             accept = "application/pdf"
             required = true
@@ -434,7 +572,7 @@ fun statementPreviewHtml(s: Snapshot, token: String, plan: ImportPlan): String =
     }
     form(classes = "filters") {
         label {
-            +"Account"
+            span { +"Account" }
             select {
                 name = "account"
                 attributes["hx-post"] = "/statements/$token/preview"
@@ -450,6 +588,7 @@ fun statementPreviewHtml(s: Snapshot, token: String, plan: ImportPlan): String =
                 attributes["hx-target"] = "#statement"
                 val updates = plan.matched.count { it.updated != null }
                 attributes["hx-confirm"] = "Add ${plan.added.size} new transactions and update $updates matched ones?"
+                icon("check")
                 +"Import"
             }
         }
@@ -463,20 +602,22 @@ fun statementPreviewHtml(s: Snapshot, token: String, plan: ImportPlan): String =
     }
     if (plan.added.isNotEmpty()) {
         h2 { +"New" }
-        table("compact") {
-            tbody {
-                plan.added.forEach { a ->
-                    tr(if (a.transaction.status == TransactionStatus.CAPTURED.name) "captured" else null) {
-                        td("nowrap") { +a.line.date.format(dayFormat) }
-                        td { +(a.merchant?.name ?: a.transaction.merchantId?.let { s.merchantsById[it]?.name } ?: a.line.merchant) }
-                        td("muted") {
-                            +when {
-                                a.transaction.kind != Kind.EXPENSE.name -> a.transaction.kind.lowercase()
-                                a.transaction.categoryId != null -> s.label(a.transaction.categoryId)
-                                else -> "to review"
+        div("card") {
+            table("compact") {
+                tbody {
+                    plan.added.forEach { a ->
+                        tr(if (a.transaction.status == TransactionStatus.CAPTURED.name) "captured" else null) {
+                            td("nowrap muted") { +a.line.date.format(dayFormat) }
+                            td { +(a.merchant?.name ?: a.transaction.merchantId?.let { s.merchantsById[it]?.name } ?: a.line.merchant) }
+                            td("muted") {
+                                +when {
+                                    a.transaction.kind != Kind.EXPENSE.name -> a.transaction.kind.lowercase()
+                                    a.transaction.categoryId != null -> s.label(a.transaction.categoryId)
+                                    else -> "to review"
+                                }
                             }
+                            td("num") { amount(a.line.amountCents) }
                         }
-                        td("num") { +signed(a.line.amountCents) }
                     }
                 }
             }
@@ -484,16 +625,18 @@ fun statementPreviewHtml(s: Snapshot, token: String, plan: ImportPlan): String =
     }
     if (plan.matched.isNotEmpty()) {
         h2 { +"Matched" }
-        table("compact") {
-            tbody {
-                plan.matched.forEach { m ->
-                    tr {
-                        td("nowrap") { +m.line.date.format(dayFormat) }
-                        td { +m.line.merchant }
-                        td("muted") { +"${s.merchantName(m.transaction)} · ${s.date(m.transaction).format(dayFormat)}" }
-                        td("num") {
-                            if (m.line.amountCents != m.transaction.amountCents) span("muted") { +"${signed(m.transaction.amountCents)} → " }
-                            +signed(m.line.amountCents)
+        div("card") {
+            table("compact") {
+                tbody {
+                    plan.matched.forEach { m ->
+                        tr {
+                            td("nowrap muted") { +m.line.date.format(dayFormat) }
+                            td { +m.line.merchant }
+                            td("muted") { +"${s.merchantName(m.transaction)} · ${s.date(m.transaction).format(dayFormat)}" }
+                            td("num") {
+                                if (m.line.amountCents != m.transaction.amountCents) span("muted") { +"${signed(m.transaction.amountCents)} → " }
+                                amount(m.line.amountCents)
+                            }
                         }
                     }
                 }
@@ -503,13 +646,15 @@ fun statementPreviewHtml(s: Snapshot, token: String, plan: ImportPlan): String =
     if (plan.missing.isNotEmpty()) {
         h2 { +"In Tally, not on the statement" }
         p("muted") { +"Maybe a different account, a duplicate, or a purchase that was cancelled. Nothing changes for these." }
-        table("compact") {
-            tbody {
-                plan.missing.forEach { t ->
-                    tr {
-                        td("nowrap") { +s.date(t).format(dayFormat) }
-                        td { +s.merchantName(t) }
-                        td("num") { +signed(t.amountCents) }
+        div("card") {
+            table("compact") {
+                tbody {
+                    plan.missing.forEach { t ->
+                        tr {
+                            td("nowrap muted") { +s.date(t).format(dayFormat) }
+                            td { +s.merchantName(t) }
+                            td("num") { amount(t.amountCents) }
+                        }
                     }
                 }
             }
@@ -535,8 +680,8 @@ fun statementImportedHtml(plan: ImportPlan?): String = createHTML().div {
 fun statementErrorHtml(message: String): String = createHTML().div("result error") { +message }
 
 private fun FlowContent.statCard(label: String, count: Int, sub: String?) {
-    div("card") {
-        div("label") { +label }
+    div("card stat") {
+        monoLabel(label)
         div("value") { +"$count" }
         sub?.let { div("sub") { +it } }
     }
@@ -561,121 +706,61 @@ fun tomlResultHtml(result: TomlImport, saved: Boolean): String = createHTML().di
     }
 }
 
+// The spending chart: this month's running total against last month's, or monthly bars, styled
+// like the app's (ink line over a soft green fill, dashed last month, dark pill tooltips).
 private const val CHARTS_JS = """
 (() => {
-  const css = getComputedStyle(document.documentElement);
-  const fg = css.getPropertyValue('--muted').trim(), accent = css.getPropertyValue('--accent').trim(),
-        soft = css.getPropertyValue('--soft').trim(), good = css.getPropertyValue('--good').trim();
-  Chart.defaults.color = fg;
-  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+  const ink = v('--ink'), faint = v('--faint'), accent = v('--accent'), line = v('--line'), chip = v('--chip-strong'),
+        tipBg = v('--primary'), tipFg = v('--on-primary');
+  Chart.defaults.color = faint;
+  Chart.defaults.font.family = 'Geist, system-ui, sans-serif';
+  const mono = {family: '"Geist Mono", monospace', size: 10};
   const money = v => '$' + Number(v).toLocaleString(undefined, {maximumFractionDigits: 0});
-  const datasets = [
-    {label: tally.thisLabel, data: tally.thisMonth, borderColor: accent, backgroundColor: accent, tension: .2, pointRadius: 0, spanGaps: false},
-    {label: tally.lastLabel, data: tally.lastMonth, borderColor: soft, backgroundColor: soft, borderDash: [4, 4], tension: .2, pointRadius: 0},
-  ];
-  if (tally.budget !== null) datasets.push({label: 'Budget', data: tally.days.map(() => tally.budget), borderColor: fg, borderWidth: 1, pointRadius: 0});
-  new Chart(document.getElementById('cumulative'), {
-    type: 'line', data: {labels: tally.days, datasets},
-    options: {interaction: {mode: 'index', intersect: false}, scales: {y: {ticks: {callback: money}}},
-              plugins: {tooltip: {callbacks: {label: c => c.dataset.label + ': ' + money(c.parsed.y)}}}},
-  });
-  new Chart(document.getElementById('months'), {
-    type: 'bar',
-    data: {labels: tally.months, datasets: [
-      {label: 'Spent', data: tally.spent, backgroundColor: accent},
-      {label: 'Income', data: tally.income, backgroundColor: good},
-    ]},
-    options: {scales: {y: {ticks: {callback: money}}},
-              plugins: {tooltip: {callbacks: {label: c => c.dataset.label + ': ' + money(c.parsed.y)}}}},
-  });
+  const cents = v => '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const tooltip = {backgroundColor: tipBg, titleColor: tipFg, bodyColor: tipFg, footerColor: tipFg, cornerRadius: 14, padding: 10,
+                   displayColors: false, titleFont: mono, bodyFont: {family: 'Geist', size: 13, weight: '500'}, caretSize: 0};
+  const scales = {
+    x: {grid: {display: false}, border: {display: false}, ticks: {font: mono, maxTicksLimit: 7, maxRotation: 0}},
+    y: {grid: {color: line}, border: {display: false}, ticks: {font: mono, callback: money, maxTicksLimit: 5}, beginAtZero: true},
+  };
+  const fill = ctx => {
+    const {chart} = ctx, area = chart.chartArea;
+    if (!area) return 'transparent';
+    const g = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    g.addColorStop(0, accent + '40'); g.addColorStop(1, accent + '00');
+    return g;
+  };
+  const canvas = document.getElementById('spending');
+  let chart;
+  const draw = range => {
+    if (chart) chart.destroy();
+    document.getElementById('legend').hidden = range !== 'month';
+    if (range === 'month') {
+      const datasets = [
+        {label: tally.thisLabel, data: tally.thisMonth, borderColor: ink, backgroundColor: fill, fill: 'origin', borderWidth: 2.4,
+         tension: .35, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: accent, pointHoverBorderColor: v('--card'), pointHoverBorderWidth: 3, spanGaps: false},
+        {label: tally.lastLabel, data: tally.lastMonth, borderColor: faint, borderDash: [5, 5], borderWidth: 1.6, tension: .35, pointRadius: 0, pointHoverRadius: 0},
+      ];
+      if (tally.budget !== null) datasets.push({label: 'Budget', data: tally.days.map(() => tally.budget), borderColor: faint, borderWidth: 1, borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0});
+      chart = new Chart(canvas, {type: 'line', data: {labels: tally.days, datasets}, options: {
+        maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, scales,
+        plugins: {legend: {display: false}, tooltip: {...tooltip,
+          callbacks: {title: items => tally.thisLabel + ' ' + items[0].label, label: c => c.dataset.label + '  ' + cents(c.parsed.y)}}}}});
+    } else {
+      const n = range === 'six' ? 6 : 12;
+      const labels = tally.months.slice(-n), spent = tally.spent.slice(-n), income = tally.income.slice(-n);
+      chart = new Chart(canvas, {type: 'bar', data: {labels, datasets: [{label: 'Spent', data: spent,
+        backgroundColor: labels.map((_, i) => i === labels.length - 1 ? accent : chip), hoverBackgroundColor: ink,
+        borderRadius: 10, borderSkipped: false, maxBarThickness: 44}]},
+        options: {maintainAspectRatio: false, scales, plugins: {legend: {display: false}, tooltip: {...tooltip,
+          callbacks: {label: c => 'Spent  ' + cents(c.parsed.y), footer: items => 'In  ' + cents(income[items[0].dataIndex])}}}}});
+    }
+  };
+  document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-range]').forEach(x => x.classList.toggle('on', x === b));
+    draw(b.dataset.range);
+  }));
+  document.fonts.ready.then(() => draw('month'));
 })();
-"""
-
-private const val CSS = """
-:root { --bg:#f7f7f5; --panel:#fff; --fg:#1d1d1f; --muted:#6b6b70; --line:#e4e4e0; --accent:#2f6fde; --soft:#a9b8d6;
-        --good:#2e9e6a; --warn:#d9922b; --over:#d2483d; --tag:#eef1f6; color-scheme: light; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg:#141416; --panel:#1d1d20; --fg:#ececee; --muted:#9a9aa2; --line:#2e2e33; --accent:#6c9cf5; --soft:#4b5a78;
-          --good:#4cc08a; --warn:#e8a94c; --over:#f0675c; --tag:#2a2e38; color-scheme: dark; }
-}
-* { box-sizing: border-box; }
-body { margin:0; background:var(--bg); color:var(--fg); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-a { color: var(--accent); text-decoration: none; }
-header { display:flex; align-items:center; gap:1.5rem; padding:.75rem 1.25rem; background:var(--panel); border-bottom:1px solid var(--line);
-         position:sticky; top:0; z-index:1; flex-wrap:wrap; }
-.brand { font-weight:700; color:var(--fg); font-size:1.1rem; }
-nav { display:flex; gap:.25rem; flex-wrap:wrap; }
-nav a { color:var(--muted); padding:.3rem .65rem; border-radius:6px; }
-nav a.active { color:var(--fg); background:var(--tag); }
-.count { background:var(--accent); color:#fff; border-radius:9px; padding:0 .4rem; margin-left:.35rem; font-size:.8rem; }
-.live-banner { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--fg); color:var(--bg);
-                padding:.5rem 1rem; border-radius:8px; z-index:2; box-shadow:0 4px 14px rgba(0,0,0,.2); }
-.live-banner a { color:var(--bg); text-decoration:underline; }
-.who { margin-left:auto; color:var(--muted); font-size:.85rem; }
-main { max-width:1200px; margin:0 auto; padding:1.25rem 1rem 3rem; }
-h1 { font-size:1.4rem; margin:.25rem 0 1rem; }
-h2 { font-size:1rem; margin:0 0 .75rem; }
-.muted { color:var(--muted); }
-.month-nav { display:flex; align-items:center; gap:1rem; }
-.month-nav a { font-size:1.6rem; padding:0 .4rem; }
-.month-nav h1 { margin:.25rem 0; }
-.cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:.75rem; margin:1rem 0; }
-.card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.9rem 1rem; }
-.card .label { color:var(--muted); font-size:.85rem; }
-.card .value { font-size:1.45rem; font-weight:600; font-variant-numeric:tabular-nums; }
-.card .sub { color:var(--muted); font-size:.85rem; }
-.card.warning .value { color:var(--warn); } .card.over .value { color:var(--over); }
-.grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:.75rem; }
-.grid canvas { margin-bottom:1.25rem; }
-.bar-row { display:grid; grid-template-columns:9rem 1fr 8.5rem; align-items:center; gap:.6rem; margin:.35rem 0; }
-.bar-row.child { font-size:.88rem; } .bar-row.child .bar-label { padding-left:.9rem; color:var(--muted); }
-.bar-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg); }
-.bar-track { position:relative; height:.7rem; background:var(--tag); border-radius:4px; }
-.bar { height:100%; background:var(--accent); border-radius:4px; }
-.child .bar { background:var(--soft); }
-.bar.warning { background:var(--warn); } .bar.over { background:var(--over); }
-.budget-mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--fg); opacity:.55; }
-.bar-value, .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-table { width:100%; border-collapse:collapse; }
-th { text-align:left; color:var(--muted); font-weight:500; font-size:.85rem; }
-th, td { padding:.45rem .5rem; border-bottom:1px solid var(--line); vertical-align:middle; }
-table.ledger { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-tr.captured td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
-tfoot td { font-weight:600; border-bottom:none; }
-td.income { color:var(--good); }
-.nowrap { white-space:nowrap; }
-.tag { display:inline-block; background:var(--tag); color:var(--muted); border-radius:5px; padding:0 .4rem; margin-left:.35rem; font-size:.78rem; }
-.note { font-size:.88rem; }
-select, input, textarea, button { font:inherit; color:inherit; }
-select, input { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.3rem .45rem; max-width:100%; }
-select.category { width:100%; min-width:10rem; }
-button { border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:.35rem .8rem; cursor:pointer; }
-button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-button.quiet { color:var(--muted); }
-.filters { display:flex; flex-wrap:wrap; gap:.6rem; align-items:flex-end; margin-bottom:1rem; }
-.filters label { display:flex; flex-direction:column; font-size:.8rem; color:var(--muted); gap:.15rem; }
-.inbox { display:flex; flex-direction:column; gap:.6rem; }
-.item { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.8rem 1rem; display:flex; gap:1rem;
-        justify-content:space-between; align-items:center; flex-wrap:wrap; }
-.item.done { color:var(--muted); justify-content:flex-start; }
-.item-main { display:flex; gap:1rem; align-items:center; }
-.item .amount { font-size:1.2rem; font-weight:600; font-variant-numeric:tabular-nums; min-width:6rem; }
-.item .merchant { font-weight:500; }
-.item-actions { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
-.item-actions select { width:auto; }
-.suggestion { margin-right:.25rem; }
-.badge { background:var(--tag); color:var(--muted); font-size:.75rem; border-radius:5px; padding:0 .35rem; margin-left:.35rem; }
-.toml textarea { width:100%; min-height:28rem; font:13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; background:var(--panel);
-                 border:1px solid var(--line); border-radius:10px; padding:.8rem; tab-size:4; }
-.toml .actions { display:flex; gap:.5rem; align-items:flex-start; margin:.5rem 0 1.5rem; flex-wrap:wrap; }
-.result { padding:.35rem .6rem; border-radius:6px; }
-.result.ok { color:var(--good); } .result.error { color:var(--over); }
-.upload { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; }
-.mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size:.88rem; }
-table.compact td { padding:.35rem .4rem; }
-@media (max-width: 640px) {
-  .hide-sm { display:none; }
-  .bar-row { grid-template-columns:6.5rem 1fr 6.5rem; font-size:.88rem; }
-  header { gap:.75rem; } .who { display:none; }
-}
 """

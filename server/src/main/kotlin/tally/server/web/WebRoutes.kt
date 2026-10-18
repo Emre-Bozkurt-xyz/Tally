@@ -12,6 +12,7 @@ import io.ktor.server.request.receiveParameters
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
 import io.ktor.server.response.respondText
+import io.ktor.server.http.content.staticResources
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -29,6 +30,9 @@ import java.time.ZoneId
 fun Route.dashboard(edits: WebEdits, rules: RulesEdits, suggester: RuleSuggester, statements: StatementImport, zone: ZoneId, clock: Clock) {
     fun today() = LocalDate.now(clock.withZone(zone))
     suspend fun snapshot() = withContext(Dispatchers.IO) { edits.snapshot() }
+
+    // The fonts, shared with the app (Geist and Geist Mono, OFL).
+    staticResources("/assets", "assets")
 
     get("/") {
         val month = call.request.queryParameters["month"]?.let { runCatching { YearMonth.parse(it) }.getOrNull() } ?: YearMonth.from(today())

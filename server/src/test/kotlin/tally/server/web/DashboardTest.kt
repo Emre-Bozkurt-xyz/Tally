@@ -74,6 +74,8 @@ class DashboardTest {
             setBody(FormDataContent(Parameters.build { form.forEach { (k, v) -> append(k, v) } }))
         }
 
+    private fun String.text() = replace(Regex("<[^>]+>"), "")
+
     private fun stored(id: String) = edits.snapshot().transactions.single { it.id == id }
 
     @Test
@@ -82,11 +84,12 @@ class DashboardTest {
         assertTrue("data-live=\"auto\"" in html && "new EventSource('/api/events')" in html)
         assertTrue("data-live=\"banner\"" in client.get("/rules").bodyAsText())
         assertTrue("October 2026" in html)
-        assertTrue("\$38.57" in html, "spent this month") // 4.25 + 34.32
+        // Amounts set their cents in a <small>; compare the text.
+        assertTrue("\$38.57" in html.text(), "spent this month") // 4.25 + 34.32
         assertTrue("\$361.43 left" in html, "food budget 400 minus spending")
         assertTrue("Foodie Fruitie" in html && "Tim Hortons" in html)
         assertTrue("const tally = " in html && "chart.umd.min.js" in html)
-        assertTrue("\$50.00" in client.get("/?month=2026-09").bodyAsText())
+        assertTrue("\$50.00" in client.get("/?month=2026-09").bodyAsText().text())
     }
 
     @Test
@@ -127,7 +130,7 @@ class DashboardTest {
     @Test
     fun `inbox confirms a suggestion, and ignoring deletes`() = app {
         val inbox = client.get("/inbox").bodyAsText()
-        assertTrue("Foodie Fruitie" in inbox && "suggested" in inbox)
+        assertTrue("Foodie Fruitie" in inbox && "from Claude" in inbox)
         assertTrue("Confirmed." in edit("/inbox/t-fruitie/confirm").bodyAsText())
         val t = stored("t-fruitie")
         assertEquals(TransactionStatus.CONFIRMED.name to CategorySource.LLM.name, t.status to t.categorySource)
