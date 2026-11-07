@@ -56,4 +56,25 @@ class CaptureDeduperTest {
         val near = candidate("near", Source.GOOGLE_WALLET, at = t0.minusSeconds(20))
         assertEquals(near, deduper.findMatch(capture(Source.RBC_ALERT), null, listOf(far, near)))
     }
+
+    @Test
+    fun `a card payment and its withdrawal pair up either way round, across accounts`() {
+        val payment = Capture(200_00, null, t0.plusSeconds(11), Source.RBC_ALERT, null, Kind.TRANSFER)
+        val withdrawal = candidate("wd", Source.RBC_ALERT, cents = 200_00, accountId = "chequing")
+        assertEquals(withdrawal, deduper.findMatch(payment, accountId = null, candidates = listOf(withdrawal)))
+
+        val paymentFirst = DedupeCandidate("pay", 200_00, t0, setOf(Source.RBC_ALERT), null, Kind.TRANSFER)
+        val laterWithdrawal = capture(Source.RBC_ALERT, at = t0.plusSeconds(11), cents = 200_00)
+        assertEquals(paymentFirst, deduper.findMatch(laterWithdrawal, accountId = "chequing", candidates = listOf(paymentFirst)))
+    }
+
+    @Test
+    fun `a payment never swallows a wallet purchase, and a purchase never joins a transfer`() {
+        val walletPurchase = DedupeCandidate("w", 200_00, t0, setOf(Source.GOOGLE_WALLET, Source.RBC_ALERT), "chequing")
+        val payment = Capture(200_00, null, t0.plusSeconds(11), Source.RBC_ALERT, null, Kind.TRANSFER)
+        assertNull(deduper.findMatch(payment, null, listOf(walletPurchase)))
+
+        val transfer = DedupeCandidate("t", 200_00, t0, setOf(Source.RBC_ALERT), null, Kind.TRANSFER)
+        assertNull(deduper.findMatch(capture(Source.SAMSUNG_WALLET, cents = 200_00), null, listOf(transfer)))
+    }
 }

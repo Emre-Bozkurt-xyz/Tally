@@ -44,11 +44,16 @@ class ParsersTest {
     }
 
     @Test
-    fun `unknown google wallet text fails`() {
+    fun `unknown google wallet text with an amount fails, without one it's ignored`() {
         assertInstanceOf(
             ParseResult.Failed::class.java,
+            GoogleWalletParser.parse(wallet("Google Wallet", "Refund of CA\$5.00 is on its way")),
+        )
+        assertInstanceOf(
+            ParseResult.Ignored::class.java,
             GoogleWalletParser.parse(wallet("Google Wallet", "Add your transit card for faster rides")),
         )
+        assertInstanceOf(ParseResult.Ignored::class.java, GoogleWalletParser.parse(wallet("HALLOWEEN ON KING ticket", "")))
     }
 
     @Test
@@ -73,10 +78,11 @@ class ParsersTest {
     }
 
     @Test
-    fun `samsung rewards and blank summaries are ignored, other text fails`() {
+    fun `samsung rewards, blank summaries and text without an amount are ignored, other text fails`() {
         assertInstanceOf(ParseResult.Ignored::class.java, CaptureParsers.parse(samsung("Samsung Wallet", "You earned 8 points. Tap here to check your Samsung Rewards points.")))
         assertInstanceOf(ParseResult.Ignored::class.java, CaptureParsers.parse(samsung(null, null)))
-        assertInstanceOf(ParseResult.Failed::class.java, CaptureParsers.parse(samsung("Samsung Wallet", "Your card was added.")))
+        assertInstanceOf(ParseResult.Failed::class.java, CaptureParsers.parse(samsung("Samsung Wallet", "Refund of CAD 5.00 pending")))
+        assertInstanceOf(ParseResult.Ignored::class.java, CaptureParsers.parse(samsung("Samsung Wallet", "Installing…")))
     }
 
     @Test

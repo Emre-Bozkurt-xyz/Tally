@@ -186,6 +186,44 @@ class CapturePipelineTest {
         assertEquals(1, active().size)
     }
 
+    /** What Tally learns once you file one chequing capture: 8805 is the chequing account. */
+    private suspend fun knowChequing() =
+        db.accountIdentifierDao().insert(AccountIdentifierEntity(UUID.randomUUID().toString(), chequing, "8805", 0))
+
+    private suspend fun payment(at: Instant) = post(WatchedPackages.RBC, "RBC Mobile", "A payment of \$200.00 to RBC credit card 0800 on 11/02.", at)
+
+    @Test
+    fun `a credit card payment and its chequing withdrawal become one transfer, in either order`() = runTest {
+        knowChequing()
+        val withdrawal = rbc(t0, cents = "200.00") as CapturePipeline.Outcome.Captured
+        assertTrue(withdrawal.needsReview)
+        val paid = payment(t0.plusSeconds(11)) as CapturePipeline.Outcome.Captured
+        assertEquals(withdrawal.transaction.id, paid.transaction.id)
+        assertEquals("TRANSFER", paid.transaction.kind)
+        assertEquals(chequing, paid.transaction.accountId)
+        assertNull(paid.transaction.categoryId)
+        assertEquals(false, paid.needsReview)
+
+        val later = t0.plus(Duration.ofDays(30))
+        val first = payment(later) as CapturePipeline.Outcome.Captured
+        assertEquals(false, first.needsReview)
+        val second = rbc(later.plusSeconds(11), cents = "200.00") as CapturePipeline.Outcome.Captured
+        assertEquals(first.transaction.id, second.transaction.id)
+        assertEquals("TRANSFER", second.transaction.kind)
+        assertEquals(chequing, second.transaction.accountId)
+        assertEquals(2, active().size)
+    }
+
+    @Test
+    fun `a deposit is money in waiting in the inbox`() = runTest {
+        knowChequing()
+        val deposit = post(WatchedPackages.RBC, "RBC Mobile", "A deposit of \$70.00 was made to your RBC account ********8805 on 11/07.", t0)
+            as CapturePipeline.Outcome.Captured
+        assertEquals(-70_00L, deposit.transaction.amountCents)
+        assertEquals(chequing, deposit.transaction.accountId)
+        assertTrue(deposit.needsReview)
+    }
+
     @Test
     fun `reparse picks up events stored before the pipeline existed, in order`() = runTest {
         for ((source, title, text, at) in listOf(

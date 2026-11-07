@@ -142,7 +142,7 @@ fun LedgerScreen(ledger: LedgerRepository, onOpenTransaction: (String) -> Unit) 
                 itemsIndexed(dayTransactions, key = { _, it -> it.id }) { index, transaction ->
                     val categoryName = transaction.categoryId?.let { byId[it]?.name }
                     val merchantName = transaction.merchantId?.let { merchantNames[it] } ?: transaction.merchantRaw
-                    val title = merchantName ?: categoryName ?: "Uncategorized"
+                    val title = merchantName ?: categoryName ?: transaction.fallbackTitle()
                     val shape = groupShape(index, dayTransactions.size)
                     Column(Modifier.padding(horizontal = ScreenPadding).animateItem()) {
                         DeletableRow(shape, onDelete = { delete(transaction, title) }) {

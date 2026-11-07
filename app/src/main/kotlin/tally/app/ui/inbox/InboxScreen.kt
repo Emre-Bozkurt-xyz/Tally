@@ -66,6 +66,7 @@ import tally.app.ui.components.StatusPill
 import tally.app.ui.components.avatarKey
 import tally.app.ui.ledger.dayLabel
 import tally.app.ui.ledger.displayAmount
+import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.ledger.occurredAtLocal
 import tally.app.ui.theme.Tally
 import tally.app.ui.theme.TallyIcons
@@ -171,7 +172,7 @@ fun InboxScreen(
                     modifier = Modifier.padding(horizontal = ScreenPadding).animateItem(),
                 ) {
                     CaptureCard(
-                        title = merchantName ?: "Card purchase",
+                        title = merchantName ?: transaction.fallbackTitle(),
                         avatarKey = avatarKey(transaction.categoryId, byId),
                         amountCents = transaction.amountCents,
                         details = listOfNotNull(

@@ -69,8 +69,14 @@ class Snapshot(
     /** "Food › Coffee" for display. */
     fun label(categoryId: String?): String = path(categoryId)?.replace("/", " › ") ?: "Uncategorized"
 
+    /** The merchant, or what the bank said it was ("Withdrawal", "Deposit"), as on the phone. */
     fun merchantName(t: TransactionRow): String =
-        t.merchantId?.let { merchantsById[it]?.name } ?: t.merchantRaw ?: t.note ?: "Manual entry"
+        t.merchantId?.let { merchantsById[it]?.name } ?: t.merchantRaw ?: t.note ?: when {
+            t.amountCents < 0 -> "Deposit"
+            t.source == "RBC_ALERT" -> "Withdrawal"
+            t.source == "MANUAL" -> "Manual entry"
+            else -> "Card purchase"
+        }
 
     fun date(t: TransactionRow): LocalDate = Instant.ofEpochMilli(t.occurredAt).atZone(zoneOf(t)).toLocalDate()
 

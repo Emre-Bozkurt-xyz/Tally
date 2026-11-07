@@ -24,7 +24,8 @@ class RawEventRepository(private val dao: RawEventDao) {
 
     /**
      * Stores the event unless the same notification (same key and identical text) was
-     * already stored within [DUPLICATE_WINDOW_MS]. Apps re-post and update notifications.
+     * already stored within [DUPLICATE_WINDOW_MS], or ever with the same post time. Apps
+     * re-post and update notifications; Google Wallet re-posted one 6 hours later.
      * Returns whether it was stored.
      */
     suspend fun record(event: RawEventEntity): Boolean = recordLock.withLock {
@@ -32,6 +33,7 @@ class RawEventRepository(private val dao: RawEventDao) {
         val duplicate = key != null && dao.existsRecentDuplicate(
             sbnKey = key,
             since = event.receivedAt - DUPLICATE_WINDOW_MS,
+            postedAt = event.postedAt,
             title = event.title,
             text = event.text,
             bigText = event.bigText,

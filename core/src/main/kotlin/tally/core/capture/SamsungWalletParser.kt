@@ -10,6 +10,8 @@ import tally.core.model.Source
  * - Purchase: title is the card ("RBC Visa Card/Carte Visa RBC‡"), text is the merchant then
  *   the amount ("PASHA LOUNGE CAD 31.30"). No last 4, so the account comes from the card name.
  * - Rewards: "You earned 8 points. Tap here to check your Samsung Rewards points." Ignored.
+ * - Anything without an amount ("Installing…", "Card information deleted in card issuer's
+ *   database") is the wallet talking about itself: ignored.
  */
 object SamsungWalletParser : CaptureParser {
     override val packageName = WatchedPackages.SAMSUNG_WALLET
@@ -38,6 +40,8 @@ object SamsungWalletParser : CaptureParser {
             )
         }
 
+        // Purchases always carry an amount; "Installing…", "Card information deleted…" don't.
+        if (Amounts.findFirst(text) == null) return ParseResult.Ignored("Samsung Wallet notification with no amount")
         return ParseResult.Failed("Unknown Samsung Wallet notification shape")
     }
 }

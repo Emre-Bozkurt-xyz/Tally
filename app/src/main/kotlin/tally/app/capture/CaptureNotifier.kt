@@ -16,6 +16,7 @@ import tally.app.R
 import tally.app.data.CapturePipeline
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.ledger.displayAmount
+import tally.app.ui.ledger.fallbackTitle
 import tally.core.model.CategorySource
 
 /**
@@ -47,7 +48,7 @@ object CaptureNotifier {
             return
         }
 
-        val title = "${displayAmount(transaction.amountCents)} · ${captured.merchantName ?: "Card purchase"}"
+        val title = "${displayAmount(transaction.amountCents)} · ${captured.merchantName ?: transaction.fallbackTitle()}"
         val guess = if (transaction.categorySource == CategorySource.LLM.name) " (suggested)" else ""
         val text = captured.categoryName?.let { "$it$guess · tap to confirm" } ?: "Tap to pick a category"
         val change = PendingIntent.getActivity(

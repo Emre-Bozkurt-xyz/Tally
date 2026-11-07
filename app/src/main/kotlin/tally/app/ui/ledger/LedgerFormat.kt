@@ -3,6 +3,7 @@ package tally.app.ui.ledger
 import tally.app.data.SplitEntity
 import tally.app.data.TransactionEntity
 import tally.core.model.Kind
+import tally.core.model.Source
 import tally.core.report.LedgerEntry
 import tally.core.report.SplitPart
 import tally.core.report.withSplits
@@ -17,6 +18,18 @@ import java.time.format.DateTimeFormatter
 fun TransactionEntity.ledgerEntries(splits: List<SplitEntity>): List<LedgerEntry> =
     LedgerEntry(amountCents, Kind.valueOf(kind), categoryId, occurredAtLocal().toLocalDate(), merchantId)
         .withSplits(splits.map { SplitPart(it.amountCents, it.categoryId, it.owedBy) })
+
+/**
+ * What to call a transaction with no merchant: what the bank said it was ("Withdrawal",
+ * "Deposit"), a transfer's note ("Credit card payment"), or "Card purchase" from a wallet.
+ */
+fun TransactionEntity.fallbackTitle(): String = when {
+    kind == Kind.TRANSFER.name -> note ?: "Transfer"
+    amountCents < 0 -> "Deposit"
+    source == Source.RBC_ALERT.name -> "Withdrawal"
+    source == Source.MANUAL.name -> "Uncategorized"
+    else -> "Card purchase"
+}
 
 /** Money out as "$4.25", money in (refunds, deposits) as "+$4.25". */
 fun displayAmount(cents: Long): String = if (cents < 0) "+${Money.format(-cents)}" else Money.format(cents)

@@ -64,9 +64,11 @@ import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.inbox.CategoryPickerSheet
 import tally.app.ui.ledger.dayLabel
+import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.ledger.occurredAtLocal
 import tally.core.capture.WatchedPackages
 import tally.core.model.CategorySource
+import tally.core.model.Kind
 import tally.core.model.Money
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
@@ -123,8 +125,8 @@ fun TransactionScreen(
         val t = transaction ?: return@Scaffold
         val merchantName = t.merchantId?.let { mid -> merchants.find { it.id == mid }?.name } ?: t.merchantRaw
         val local = t.occurredAtLocal()
-        val categoryName = categoryNames[t.categoryId] ?: "Uncategorized"
-        val title = merchantName ?: categoryName
+        val categoryName = categoryNames[t.categoryId] ?: if (t.kind == Kind.TRANSFER.name) "Transfer" else "Uncategorized"
+        val title = merchantName ?: categoryNames[t.categoryId] ?: t.fallbackTitle()
 
         Column(
             modifier = Modifier

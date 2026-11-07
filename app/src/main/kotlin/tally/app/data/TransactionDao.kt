@@ -26,7 +26,7 @@ interface TransactionDao {
      */
     @Query(
         """
-        SELECT t.id AS transactionId, t.amountCents, t.occurredAt, t.accountId,
+        SELECT t.id AS transactionId, t.amountCents, t.occurredAt, t.accountId, t.kind,
                GROUP_CONCAT(r.source) AS rawSources
         FROM transactions t LEFT JOIN raw_events r ON r.transactionId = t.id
         WHERE t.source != 'MANUAL' AND t.occurredAt BETWEEN :from AND :to
@@ -113,6 +113,7 @@ data class DedupeRow(
     val amountCents: Long,
     val occurredAt: Long,
     val accountId: String?,
+    val kind: String,
     /** Comma-separated package names, or null when none are attached. */
     val rawSources: String?,
 )

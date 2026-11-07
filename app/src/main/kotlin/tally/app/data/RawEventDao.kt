@@ -42,12 +42,16 @@ interface RawEventDao {
     )
     suspend fun unlinked(sources: Set<String>): List<RawEventEntity>
 
-    /** `IS` instead of `=` so null title/text/bigText compare equal. */
+    /**
+     * The same notification again: same key and text, received recently or with the same post
+     * time (a re-post hours later, when the app regroups its notifications, keeps its original
+     * post time). `IS` instead of `=` so null title/text/bigText compare equal.
+     */
     @Query(
         """
         SELECT EXISTS(
             SELECT 1 FROM raw_events
-            WHERE sbnKey = :sbnKey AND receivedAt >= :since
+            WHERE sbnKey = :sbnKey AND (receivedAt >= :since OR postedAt = :postedAt)
               AND title IS :title AND text IS :text AND bigText IS :bigText
         )
         """,
@@ -55,6 +59,7 @@ interface RawEventDao {
     suspend fun existsRecentDuplicate(
         sbnKey: String,
         since: Long,
+        postedAt: Long,
         title: String?,
         text: String?,
         bigText: String?,

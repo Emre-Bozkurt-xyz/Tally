@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import tally.app.data.CategoryEntity
 import tally.app.data.TransactionEntity
 import tally.app.ui.components.SheetHandle
+import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.components.AmountText
 import tally.app.ui.components.LetterAvatar
 import tally.app.ui.components.MonoLabel
@@ -68,7 +69,7 @@ fun CategoryPickerSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val title = merchantName ?: "Card purchase"
+                val title = merchantName ?: transaction.fallbackTitle()
                 LetterAvatar(title, transaction.categoryId)
                 Spacer(Modifier.width(14.dp))
                 Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)

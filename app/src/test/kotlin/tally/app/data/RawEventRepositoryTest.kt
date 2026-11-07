@@ -41,6 +41,14 @@ class RawEventRepositoryTest {
     }
 
     @Test
+    fun `drops a re-post hours later that keeps its original post time`() = runTest {
+        // Google Wallet re-posted a purchase 6 hours later when it regrouped its notifications.
+        assertTrue(repo.record(event(receivedAt = T0)))
+        assertFalse(repo.record(event(receivedAt = T0 + 6 * 3_600_000, postedAt = T0)))
+        assertEquals(1, repo.observeAll().first().size)
+    }
+
+    @Test
     fun `stores an update to the same notification with new text`() = runTest {
         assertTrue(repo.record(event(receivedAt = T0, text = "Purchase of \$4.25")))
         assertTrue(repo.record(event(receivedAt = T0 + 1_000, text = "Purchase of \$5.00")))
@@ -100,6 +108,7 @@ class RawEventRepositoryTest {
 
     private fun event(
         receivedAt: Long,
+        postedAt: Long = receivedAt,
         source: String = "com.rbc.mobile.android",
         sbnKey: String? = "0|com.rbc.mobile.android|1|null|10123",
         title: String? = "Credit card purchase",
@@ -109,7 +118,7 @@ class RawEventRepositoryTest {
         id = UUID.randomUUID().toString(),
         source = source,
         receivedAt = receivedAt,
-        postedAt = receivedAt,
+        postedAt = postedAt,
         zoneId = "America/Toronto",
         sbnKey = sbnKey,
         channelId = null,

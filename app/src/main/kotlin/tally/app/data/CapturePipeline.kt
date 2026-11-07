@@ -11,6 +11,7 @@ import tally.core.capture.ParseResult
 import tally.core.capture.WatchedPackages
 import tally.core.dedupe.CaptureDeduper
 import tally.core.dedupe.DedupeCandidate
+import tally.core.model.Kind
 import tally.core.model.ParseStatus
 import tally.core.model.Source
 import tally.core.model.TransactionStatus
@@ -137,7 +138,7 @@ class CapturePipeline(
             categorySource = null,
             kind = capture.kind.name,
             updatedAt = now,
-        ).categorized(merchant, categorizer)
+        ).let { if (capture.kind == Kind.TRANSFER) it.asTransfer() to emptyList() else it.categorized(merchant, categorizer) }
         transactions.upsert(transaction)
         tag(transaction.id, tags, now)
         return transaction
@@ -160,7 +161,10 @@ class CapturePipeline(
         if (accountId != null && (merged.accountId == null || capture.source == Source.RBC_ALERT)) {
             merged = merged.copy(accountId = accountId)
         }
-        if (merged.status == TransactionStatus.CAPTURED.name && merged.categoryId == null) {
+        if (capture.kind == Kind.TRANSFER || merged.kind == Kind.TRANSFER.name) {
+            // A card payment and the withdrawal paying it: money between your accounts.
+            merged = merged.asTransfer()
+        } else if (merged.status == TransactionStatus.CAPTURED.name && merged.categoryId == null) {
             val (categorized, tags) =
                 merged.categorized(merchant ?: merged.merchantId?.let { merchants.getById(it) }, categorizer)
             merged = categorized
@@ -169,6 +173,15 @@ class CapturePipeline(
         if (merged == existing) return existing
         return merged.copy(updatedAt = now).also { transactions.upsert(it) }
     }
+
+    /** A credit card payment: between your own accounts, so no category and nothing to review. */
+    private fun TransactionEntity.asTransfer(): TransactionEntity = copy(
+        kind = Kind.TRANSFER.name,
+        categoryId = null,
+        categorySource = null,
+        status = TransactionStatus.CONFIRMED.name,
+        note = note ?: "Credit card payment",
+    )
 
     /**
      * Applies rules, then merchant memory. A rule or trusted memory confirms the transaction
@@ -221,6 +234,7 @@ class CapturePipeline(
                 occurredAt = Instant.ofEpochMilli(row.occurredAt),
                 sources = row.rawSources.orEmpty().split(',').mapNotNull { WatchedPackages.sourceFor(it) }.toSet(),
                 accountId = row.accountId,
+                kind = runCatching { Kind.valueOf(row.kind) }.getOrDefault(Kind.EXPENSE),
             )
         }
 

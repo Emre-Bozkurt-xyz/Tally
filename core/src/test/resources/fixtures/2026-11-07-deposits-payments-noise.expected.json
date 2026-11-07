@@ -1,0 +1,106 @@
+{
+    "note": "Three weeks of real notifications (Oct 18 to Nov 7). RBC deposits name no sender. A credit card payment arrives as two RBC alerts 11 s apart: the chequing withdrawal, then \"A payment of $200.00 to RBC credit card 0800\"; together they are one transfer. RBC low-credit and budgeting nudges, group summaries, Google Wallet passes and Samsung system messages are ignored. Samsung merchant names keep their store numbers and punctuation.",
+    "results": [
+        {
+            "id": "5be71be0-2081-4b87-bd72-7c3d8a8cd376",
+            "result": "PARSED",
+            "amountCents": -61066,
+            "merchantRaw": null,
+            "source": "RBC_ALERT",
+            "kind": "INCOME",
+            "accountLast4": "8805",
+            "accountName": null,
+            "occurredAt": 1793345183254
+        },
+        {
+            "id": "ad7b15ab-2074-4183-8a29-3d2e264a155b",
+            "result": "PARSED",
+            "amountCents": -7000,
+            "merchantRaw": null,
+            "source": "RBC_ALERT",
+            "kind": "INCOME",
+            "accountLast4": "8805",
+            "accountName": null,
+            "occurredAt": 1794085403255
+        },
+        {
+            "id": "ca28f078-7a31-42c2-8d39-0877a92449b5",
+            "result": "PARSED",
+            "amountCents": 20000,
+            "merchantRaw": null,
+            "source": "RBC_ALERT",
+            "kind": "EXPENSE",
+            "accountLast4": "8805",
+            "accountName": null,
+            "occurredAt": 1793678298958
+        },
+        {
+            "id": "3fb8cc2d-12e9-4968-8da9-8fda07ef55d8",
+            "result": "PARSED",
+            "amountCents": 20000,
+            "merchantRaw": null,
+            "source": "RBC_ALERT",
+            "kind": "TRANSFER",
+            "accountLast4": null,
+            "accountName": null,
+            "occurredAt": 1793678309902
+        },
+        {
+            "id": "61fdec06-1f9e-4ca2-90be-91b8be8a80de",
+            "result": "IGNORED"
+        },
+        {
+            "id": "12d6590a-a3a1-4363-9a52-5cf579272788",
+            "result": "IGNORED"
+        },
+        {
+            "id": "4b05bb23-72da-470b-8d85-bca2ce13ac63",
+            "result": "IGNORED"
+        },
+        {
+            "id": "de316bfc-c8fe-4ac1-8772-dda01d8544a8",
+            "result": "IGNORED"
+        },
+        {
+            "id": "6445a6d3-33fc-4624-a29e-914a552b1a88",
+            "result": "IGNORED"
+        },
+        {
+            "id": "cb11694d-82a5-45cb-b56c-92ea5c2dca9e",
+            "result": "IGNORED"
+        },
+        {
+            "id": "a54791b9-703d-45f7-a8da-829c5e138d14",
+            "result": "PARSED",
+            "amountCents": 631,
+            "merchantRaw": "HOSPITALITY-TIM HORTONS",
+            "source": "SAMSUNG_WALLET",
+            "kind": "EXPENSE",
+            "accountLast4": null,
+            "accountName": "RBC Visa Card/Carte Visa RBC‡",
+            "occurredAt": 1792678573210
+        },
+        {
+            "id": "3abdd493-e369-4803-bc64-098f6b59dbdd",
+            "result": "PARSED",
+            "amountCents": 375,
+            "merchantRaw": "SQ *PHIL'S GRANDSON'S PLA",
+            "source": "SAMSUNG_WALLET",
+            "kind": "EXPENSE",
+            "accountLast4": null,
+            "accountName": "RBC Visa Card/Carte Visa RBC‡",
+            "occurredAt": 1793497764334
+        },
+        {
+            "id": "28ba35fd-e1ae-43e3-b1d4-e145e30f2a79",
+            "result": "PARSED",
+            "amountCents": 599,
+            "merchantRaw": "DOLLARAMA # 284",
+            "source": "SAMSUNG_WALLET",
+            "kind": "EXPENSE",
+            "accountLast4": null,
+            "accountName": "RBC Visa Card/Carte Visa RBC‡",
+            "occurredAt": 1793314435265
+        }
+    ]
+}

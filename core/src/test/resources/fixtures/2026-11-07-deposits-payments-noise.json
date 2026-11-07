@@ -1,0 +1,227 @@
+{
+    "version": 1,
+    "exportedAt": 1794085636988,
+    "events": [
+        {
+            "id": "5be71be0-2081-4b87-bd72-7c3d8a8cd376",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1793345183504,
+            "postedAt": 1793345183254,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "notificationChannelId",
+            "isGroupSummary": false,
+            "title": "RBC Mobile",
+            "text": "A deposit of $610.66 was made to your RBC account ********8805 on 10/30.",
+            "bigText": "A deposit of $610.66 was made to your RBC account ********8805 on 10/30.",
+            "extras": {
+                "android.title": "RBC Mobile",
+                "android.text": "A deposit of $610.66 was made to your RBC account ********8805 on 10/30."
+            }
+        },
+        {
+            "id": "ad7b15ab-2074-4183-8a29-3d2e264a155b",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1794085403505,
+            "postedAt": 1794085403255,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "notificationChannelId",
+            "isGroupSummary": false,
+            "title": "RBC Mobile",
+            "text": "A deposit of $70.00 was made to your RBC account ********8805 on 11/07.",
+            "bigText": "A deposit of $70.00 was made to your RBC account ********8805 on 11/07.",
+            "extras": {
+                "android.title": "RBC Mobile",
+                "android.text": "A deposit of $70.00 was made to your RBC account ********8805 on 11/07."
+            }
+        },
+        {
+            "id": "ca28f078-7a31-42c2-8d39-0877a92449b5",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1793678299208,
+            "postedAt": 1793678298958,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "notificationChannelId",
+            "isGroupSummary": false,
+            "title": "RBC Mobile",
+            "text": "A withdrawal of $200.00 was made from your RBC account ********8805 on 11/03.",
+            "bigText": "A withdrawal of $200.00 was made from your RBC account ********8805 on 11/03.",
+            "extras": {
+                "android.title": "RBC Mobile",
+                "android.text": "A withdrawal of $200.00 was made from your RBC account ********8805 on 11/03."
+            }
+        },
+        {
+            "id": "3fb8cc2d-12e9-4968-8da9-8fda07ef55d8",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1793678310152,
+            "postedAt": 1793678309902,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "notificationChannelId",
+            "isGroupSummary": false,
+            "title": "RBC Mobile",
+            "text": "A payment of $200.00 to RBC credit card 0800 on 11/02.",
+            "bigText": "A payment of $200.00 to RBC credit card 0800 on 11/02.",
+            "extras": {
+                "android.title": "RBC Mobile",
+                "android.text": "A payment of $200.00 to RBC credit card 0800 on 11/02."
+            }
+        },
+        {
+            "id": "61fdec06-1f9e-4ca2-90be-91b8be8a80de",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1793675720753,
+            "postedAt": 1793675720503,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "notificationChannelId",
+            "isGroupSummary": false,
+            "title": "RBC Mobile",
+            "text": "RBC credit card 0800 is below set limit. Available credit: $66.89 CAD as of .",
+            "bigText": "RBC credit card 0800 is below set limit. Available credit: $66.89 CAD as of .",
+            "extras": {
+                "android.title": "RBC Mobile",
+                "android.text": "RBC credit card 0800 is below set limit. Available credit: $66.89 CAD as of ."
+            }
+        },
+        {
+            "id": "12d6590a-a3a1-4363-9a52-5cf579272788",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1792611228731,
+            "postedAt": 1792611228481,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "notificationChannelId",
+            "isGroupSummary": false,
+            "title": "RBC Mobile",
+            "text": "You’re spending against your budget. Check out how you’re doing. / Dépenses portées à votre budget. Voir vos progrès.",
+            "bigText": "You’re spending against your budget. Check out how you’re doing. / Dépenses portées à votre budget. Voir vos progrès.",
+            "extras": {
+                "android.title": "RBC Mobile",
+                "android.text": "You’re spending against your budget. Check out how you’re doing. / Dépenses portées à votre budget. Voir vos progrès."
+            }
+        },
+        {
+            "id": "4b05bb23-72da-470b-8d85-bca2ce13ac63",
+            "source": "com.rbc.mobile.android",
+            "receivedAt": 1792693950450,
+            "postedAt": 1792693950200,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "notificationChannelId",
+            "isGroupSummary": true,
+            "title": null,
+            "text": null,
+            "bigText": null,
+            "extras": {
+                "android.title": null,
+                "android.text": null
+            }
+        },
+        {
+            "id": "de316bfc-c8fe-4ac1-8772-dda01d8544a8",
+            "source": "com.google.android.apps.walletnfcrel",
+            "receivedAt": 1793495055924,
+            "postedAt": 1793495055674,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "wallet.passes",
+            "isGroupSummary": false,
+            "title": "HALLOWEEN ON KING @PHIL'S ticket",
+            "text": "",
+            "bigText": "",
+            "extras": {
+                "android.title": "HALLOWEEN ON KING @PHIL'S ticket",
+                "android.text": ""
+            }
+        },
+        {
+            "id": "6445a6d3-33fc-4624-a29e-914a552b1a88",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1793260197596,
+            "postedAt": 1793260197346,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "Other",
+            "isGroupSummary": false,
+            "title": "Samsung Wallet",
+            "text": "Installing…",
+            "bigText": null,
+            "extras": {
+                "android.title": "Samsung Wallet",
+                "android.text": "Installing…"
+            }
+        },
+        {
+            "id": "cb11694d-82a5-45cb-b56c-92ea5c2dca9e",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1793919734741,
+            "postedAt": 1793919734491,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "General",
+            "isGroupSummary": false,
+            "title": "Wealthsimple Mastercard",
+            "text": "Card information deleted in card issuer's database",
+            "bigText": "Card information deleted in card issuer's database",
+            "extras": {
+                "android.title": "Wealthsimple Mastercard",
+                "android.text": "Card information deleted in card issuer's database"
+            }
+        },
+        {
+            "id": "a54791b9-703d-45f7-a8da-829c5e138d14",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1792678573460,
+            "postedAt": 1792678573210,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "General",
+            "isGroupSummary": false,
+            "title": "RBC Visa Card/Carte Visa RBC‡",
+            "text": "HOSPITALITY-TIM HORTONS CAD 6.31",
+            "bigText": "HOSPITALITY-TIM HORTONS CAD 6.31",
+            "extras": {
+                "android.title": "RBC Visa Card/Carte Visa RBC‡",
+                "android.text": "HOSPITALITY-TIM HORTONS CAD 6.31"
+            }
+        },
+        {
+            "id": "3abdd493-e369-4803-bc64-098f6b59dbdd",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1793497764584,
+            "postedAt": 1793497764334,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "General",
+            "isGroupSummary": false,
+            "title": "RBC Visa Card/Carte Visa RBC‡",
+            "text": "SQ *PHIL'S GRANDSON'S PLA CAD 3.75",
+            "bigText": "SQ *PHIL'S GRANDSON'S PLA CAD 3.75",
+            "extras": {
+                "android.title": "RBC Visa Card/Carte Visa RBC‡",
+                "android.text": "SQ *PHIL'S GRANDSON'S PLA CAD 3.75"
+            }
+        },
+        {
+            "id": "28ba35fd-e1ae-43e3-b1d4-e145e30f2a79",
+            "source": "com.samsung.android.spay",
+            "receivedAt": 1793314435515,
+            "postedAt": 1793314435265,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": "General",
+            "isGroupSummary": false,
+            "title": "RBC Visa Card/Carte Visa RBC‡",
+            "text": "DOLLARAMA # 284 CAD 5.99",
+            "bigText": "DOLLARAMA # 284 CAD 5.99",
+            "extras": {
+                "android.title": "RBC Visa Card/Carte Visa RBC‡",
+                "android.text": "DOLLARAMA # 284 CAD 5.99"
+            }
+        }
+    ]
+}

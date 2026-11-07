@@ -53,6 +53,7 @@ import tally.app.ui.components.avatarKey
 import tally.app.ui.components.compactMoney
 import tally.app.ui.components.groupShape
 import tally.app.ui.ledger.dayLabel
+import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.ledger.ledgerEntries
 import tally.app.ui.ledger.occurredAtLocal
 import tally.app.ui.theme.Tally
@@ -239,7 +240,7 @@ fun HomeScreen(
             item(key = "recent-header") { SectionHeader("Recent", action = "See all", onAction = onOpenActivity) }
             itemsIndexed(recent, key = { _, it -> "recent:${it.id}" }) { index, t ->
                 val categoryName = t.categoryId?.let { byId[it]?.name }
-                val title = t.merchantId?.let { merchantNames[it] } ?: t.merchantRaw ?: categoryName ?: "Uncategorized"
+                val title = t.merchantId?.let { merchantNames[it] } ?: t.merchantRaw ?: categoryName ?: t.fallbackTitle()
                 val local = t.occurredAtLocal()
                 Column(Modifier.padding(horizontal = ScreenPadding)) {
                     TransactionRow(
