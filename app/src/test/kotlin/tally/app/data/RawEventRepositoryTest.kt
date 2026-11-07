@@ -49,6 +49,16 @@ class RawEventRepositoryTest {
     }
 
     @Test
+    fun `private messages from messaging apps are deleted, interac texts kept`() = runTest {
+        val messages = tally.core.capture.WatchedPackages.GOOGLE_MESSAGES
+        repo.record(event(receivedAt = T0, source = messages, sbnKey = "a", text = "dinner at 7?"))
+        repo.record(event(receivedAt = T0, source = messages, sbnKey = "b", text = "INTERAC e-Transfer: \$5.00 (CAD) from A B has been deposited to your account"))
+        repo.record(event(receivedAt = T0, sbnKey = "c"))
+        assertEquals(1, repo.deletePrivateMessages())
+        assertEquals(setOf("b", "c"), repo.observeAll().first().map { it.sbnKey }.toSet())
+    }
+
+    @Test
     fun `stores an update to the same notification with new text`() = runTest {
         assertTrue(repo.record(event(receivedAt = T0, text = "Purchase of \$4.25")))
         assertTrue(repo.record(event(receivedAt = T0 + 1_000, text = "Purchase of \$5.00")))

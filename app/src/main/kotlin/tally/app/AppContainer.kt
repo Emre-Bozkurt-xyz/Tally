@@ -46,6 +46,9 @@ class AppContainer(context: Context) {
 
     init {
         appScope.launch { DefaultData.seedIfEmpty(database) }
+        // Messaging apps are watched for Interac texts only; drop anything else an earlier
+        // "log all packages" stored from them, before it could sync or export.
+        appScope.launch { rawEvents.deletePrivateMessages() }
         appScope.launch { QuickAddWidget.refreshOnChanges(appContext, ledger) }
         // WorkManager is only touched once sync is set up (it isn't in Robolectric tests).
         appScope.launch { if (sync.settings.currentServer().isComplete) sync.updateSchedule() }

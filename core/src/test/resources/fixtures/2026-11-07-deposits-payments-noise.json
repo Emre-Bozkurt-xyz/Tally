@@ -37,6 +37,23 @@
             }
         },
         {
+            "id": "5f2c1d0e-7a51-4c1e-9b0a-3d1f0e6a7b21",
+            "source": "com.google.android.apps.messaging",
+            "receivedAt": 1794085380250,
+            "postedAt": 1794085380000,
+            "zoneId": "America/Toronto",
+            "sbnKey": null,
+            "channelId": null,
+            "isGroupSummary": false,
+            "title": "Interac",
+            "text": "INTERAC e-Transfer: $70.00 (CAD) from Jane Doe has been deposited to your account",
+            "bigText": null,
+            "extras": {
+                "android.title": "Interac",
+                "android.text": "INTERAC e-Transfer: $70.00 (CAD) from Jane Doe has been deposited to your account"
+            }
+        },
+        {
             "id": "ca28f078-7a31-42c2-8d39-0877a92449b5",
             "source": "com.rbc.mobile.android",
             "receivedAt": 1793678299208,

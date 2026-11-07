@@ -8,6 +8,8 @@ enum class Source {
     GOOGLE_WALLET,
     CSV,
     EMAIL,
+    /** An Interac e-Transfer text message (names the sender, unlike RBC's deposit alert). */
+    INTERAC,
 }
 
 /**

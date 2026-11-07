@@ -310,6 +310,7 @@ private fun sourceLabel(source: String): String = when (source) {
     Source.RBC_ALERT.name -> "Captured from RBC"
     Source.GOOGLE_WALLET.name -> "Captured from Google Wallet"
     Source.SAMSUNG_WALLET.name -> "Captured from Samsung Wallet"
+    Source.INTERAC.name -> "From an Interac e-Transfer text"
     else -> "From ${source.lowercase()}"
 }
 

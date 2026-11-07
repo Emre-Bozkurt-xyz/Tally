@@ -138,7 +138,9 @@ class CapturePipeline(
             categorySource = null,
             kind = capture.kind.name,
             updatedAt = now,
-        ).let { if (capture.kind == Kind.TRANSFER) it.asTransfer() to emptyList() else it.categorized(merchant, categorizer) }
+        ).let {
+            if (capture.kind == Kind.TRANSFER) it.asTransfer() to emptyList() else it.categorized(merchant, categorizer, person = capture.source == Source.INTERAC)
+        }
         transactions.upsert(transaction)
         tag(transaction.id, tags, now)
         return transaction
@@ -165,8 +167,9 @@ class CapturePipeline(
             // A card payment and the withdrawal paying it: money between your accounts.
             merged = merged.asTransfer()
         } else if (merged.status == TransactionStatus.CAPTURED.name && merged.categoryId == null) {
+            val person = capture.source == Source.INTERAC || merged.source == Source.INTERAC.name
             val (categorized, tags) =
-                merged.categorized(merchant ?: merged.merchantId?.let { merchants.getById(it) }, categorizer)
+                merged.categorized(merchant ?: merged.merchantId?.let { merchants.getById(it) }, categorizer, person)
             merged = categorized
             tag(merged.id, tags, now)
         }
@@ -190,12 +193,15 @@ class CapturePipeline(
     private fun TransactionEntity.categorized(
         merchant: MerchantEntity?,
         categorizer: Categorizer,
+        // Money to or from a person: memory only suggests (what Danya sends varies), as for statements.
+        person: Boolean = false,
     ): Pair<TransactionEntity, List<String>> {
         val suggestion = categorizer.categorize(
             merchant = merchant?.name,
             amountCents = amountCents,
             accountId = accountId,
             memory = merchant?.let { MerchantMemory(it.lastCategoryId, it.confirmCount) },
+            trustMemory = !person,
         )
         if (suggestion.categoryId == null) return this to emptyList()
         return copy(

@@ -2,6 +2,7 @@ package tally.app.capture
 
 import android.app.Notification
 import android.content.ComponentName
+import android.os.Parcelable
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -33,7 +34,7 @@ class TallyNotificationListener : NotificationListenerService() {
 
         // Read everything off the notification now; the extras Bundle can change later.
         val event = try {
-            toRawEvent(sbn)
+            if (pkg in WatchedPackages.MESSAGING) interacText(sbn) ?: return else toRawEvent(sbn)
         } catch (t: Throwable) {
             Log.e(TAG, "Couldn't read notification from $pkg", t)
             return
@@ -59,6 +60,27 @@ class TallyNotificationListener : NotificationListenerService() {
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * From a messaging app, only an Interac e-Transfer text, even with "log all packages" on:
+     * anything else is never stored. Keeps just that message's text and its own timestamp (so
+     * a re-post of the conversation is the same event), and none of the conversation's extras.
+     */
+    private fun interacText(sbn: StatusBarNotification): RawEventEntity? {
+        val extras = sbn.notification.extras
+        val messages = Notification.MessagingStyle.Message.getMessagesFromBundleArray(
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES, Parcelable::class.java),
+        )
+        val last = messages.lastOrNull()
+        val text = last?.text?.toString() ?: extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+        if (!WatchedPackages.wanted(sbn.packageName, text)) return null
+        return toRawEvent(sbn).copy(
+            postedAt = last?.timestamp ?: sbn.postTime,
+            text = text,
+            bigText = null,
+            extrasJson = "{}",
+        )
     }
 
     private fun toRawEvent(sbn: StatusBarNotification): RawEventEntity {

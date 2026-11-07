@@ -48,6 +48,9 @@ class RawEventRepository(private val dao: RawEventDao) {
      */
     suspend fun deleteUnwatched(): Int = dao.deleteSourcesNotIn(WatchedPackages.ALL)
 
+    /** Messaging-app notifications that aren't Interac e-Transfer texts (private messages). */
+    suspend fun deletePrivateMessages(): Int = dao.deleteNonInteracFrom(WatchedPackages.MESSAGING)
+
     /**
      * The events as export JSON. [everything] includes other apps' notifications (for finding
      * a new payment app's package); otherwise only bank and wallet ones, which keeps the file

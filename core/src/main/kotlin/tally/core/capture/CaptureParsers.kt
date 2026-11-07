@@ -13,6 +13,7 @@ object CaptureParsers {
     fun parse(n: RawNotification): ParseResult? {
         if (n.packageName !in WatchedPackages.ALL) return null
         if (listOf(n.title, n.text, n.bigText).all { it.isNullOrBlank() }) return ParseResult.Ignored("Blank notification (group summary)")
+        if (n.packageName in WatchedPackages.MESSAGING) return InteracSmsParser.parse(n)
         val parser = byPackage[n.packageName]
             ?: return ParseResult.Failed("No parser for ${WatchedPackages.displayName(n.packageName)} yet")
         return parser.parse(n)

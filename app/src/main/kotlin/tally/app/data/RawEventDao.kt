@@ -65,6 +65,15 @@ interface RawEventDao {
         bigText: String?,
     ): Boolean
 
+    /** Messages from [sources] that aren't Interac e-Transfer texts. Returns how many were deleted. */
+    @Query(
+        """
+        DELETE FROM raw_events WHERE source IN (:sources)
+          AND NOT (TRIM(COALESCE(text, '')) LIKE 'INTERAC e-Transfer%' OR TRIM(COALESCE(bigText, '')) LIKE 'INTERAC e-Transfer%')
+        """,
+    )
+    suspend fun deleteNonInteracFrom(sources: Set<String>): Int
+
     /** Returns how many were deleted. */
     @Query("DELETE FROM raw_events WHERE source NOT IN (:keep)")
     suspend fun deleteSourcesNotIn(keep: Set<String>): Int

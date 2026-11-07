@@ -225,6 +225,18 @@ class CapturePipelineTest {
     }
 
     @Test
+    fun `an interac text and rbc's deposit alert become one deposit named after the sender`() = runTest {
+        knowChequing()
+        post(WatchedPackages.RBC, "RBC Mobile", "A deposit of \$70.00 was made to your RBC account ********8805 on 11/07.", t0)
+        val named = post(WatchedPackages.SAMSUNG_MESSAGES, "Interac", "INTERAC e-Transfer: \$70.00 (CAD) from Jane Doe has been deposited to your account", t0.plusSeconds(40))
+            as CapturePipeline.Outcome.Captured
+        assertEquals("Jane Doe", named.merchantName)
+        assertEquals(chequing, named.transaction.accountId)
+        assertEquals(1, active().size)
+        assertTrue(named.needsReview)
+    }
+
+    @Test
     fun `reparse picks up events stored before the pipeline existed, in order`() = runTest {
         for ((source, title, text, at) in listOf(
             listOf(WatchedPackages.GOOGLE_WALLET, "FOODIE FRUITIE", "CA\$34.32 with Royal Bank Debit/Débit ••3881", t0),

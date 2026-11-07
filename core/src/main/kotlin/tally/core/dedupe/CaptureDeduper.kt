@@ -49,8 +49,8 @@ class CaptureDeduper(private val window: Duration = Duration.ofMinutes(10)) {
     }
 
     companion object {
-        /** Wallets name the merchant better than banks, which truncate and uppercase it. */
+        /** Wallets name the merchant better than banks, which truncate and uppercase it; Interac names the sender. */
         fun prefersMerchantFrom(source: Source): Boolean =
-            source == Source.SAMSUNG_WALLET || source == Source.GOOGLE_WALLET
+            source == Source.SAMSUNG_WALLET || source == Source.GOOGLE_WALLET || source == Source.INTERAC
     }
 }

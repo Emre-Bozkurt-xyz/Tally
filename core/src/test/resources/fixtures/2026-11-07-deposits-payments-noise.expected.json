@@ -1,5 +1,5 @@
 {
-    "note": "Three weeks of real notifications (Oct 18 to Nov 7). RBC deposits name no sender. A credit card payment arrives as two RBC alerts 11 s apart: the chequing withdrawal, then \"A payment of $200.00 to RBC credit card 0800\"; together they are one transfer. RBC low-credit and budgeting nudges, group summaries, Google Wallet passes and Samsung system messages are ignored. Samsung merchant names keep their store numbers and punctuation.",
+    "note": "Three weeks of real notifications (Oct 18 to Nov 7). RBC deposits name no sender; the Interac text that comes with an e-Transfer does (its wording is real, the sender is renamed and its timing invented). A credit card payment arrives as two RBC alerts 11 s apart: the chequing withdrawal, then \"A payment of $200.00 to RBC credit card 0800\"; together they are one transfer. RBC low-credit and budgeting nudges, group summaries, Google Wallet passes and Samsung system messages are ignored. Samsung merchant names keep their store numbers and punctuation.",
     "results": [
         {
             "id": "5be71be0-2081-4b87-bd72-7c3d8a8cd376",
@@ -22,6 +22,17 @@
             "accountLast4": "8805",
             "accountName": null,
             "occurredAt": 1794085403255
+        },
+        {
+            "id": "5f2c1d0e-7a51-4c1e-9b0a-3d1f0e6a7b21",
+            "result": "PARSED",
+            "amountCents": -7000,
+            "merchantRaw": "Jane Doe",
+            "source": "INTERAC",
+            "kind": "INCOME",
+            "accountLast4": null,
+            "accountName": null,
+            "occurredAt": 1794085380000
         },
         {
             "id": "ca28f078-7a31-42c2-8d39-0877a92449b5",

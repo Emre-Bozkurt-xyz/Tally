@@ -93,4 +93,26 @@ class ParsersTest {
         assertNull(AccountNames.match("Royal Bank Debit/Débit", accounts))
         assertNull(AccountNames.match("‡", accounts))
     }
+
+    private fun text(body: String?) = RawNotification(WatchedPackages.GOOGLE_MESSAGES, "Interac", body, null, now)
+
+    @Test
+    fun `an interac text names who sent the money`() {
+        val capture = parsed(CaptureParsers.parse(text("INTERAC e-Transfer: \$70.00 (CAD) from Jane Doe has been deposited to your account")))
+        assertEquals(-70_00L, capture.amountCents)
+        assertEquals("Jane Doe", capture.merchantRaw)
+        assertEquals(tally.core.model.Source.INTERAC, capture.source)
+        assertEquals(tally.core.model.Kind.INCOME, capture.kind)
+        assertEquals(1_250_00L, -parsed(CaptureParsers.parse(text("INTERAC e-Transfer: \$1,250.00 (CAD) from JOHN Q SMITH has been deposited to your account"))).amountCents)
+    }
+
+    @Test
+    fun `only interac texts are wanted from messaging apps, and nothing else parses`() {
+        assertEquals(true, WatchedPackages.wanted(WatchedPackages.SAMSUNG_MESSAGES, "INTERAC e-Transfer: \$5.00 (CAD) from A B has been deposited"))
+        assertEquals(false, WatchedPackages.wanted(WatchedPackages.GOOGLE_MESSAGES, "hey are we still on for dinner? I sent \$20"))
+        assertEquals(false, WatchedPackages.wanted(WatchedPackages.GOOGLE_MESSAGES, null))
+        assertEquals(true, WatchedPackages.wanted(WatchedPackages.RBC, "anything"))
+        assertInstanceOf(ParseResult.Ignored::class.java, CaptureParsers.parse(text("dinner at 7?")))
+        assertInstanceOf(ParseResult.Failed::class.java, CaptureParsers.parse(text("INTERAC e-Transfer: your transfer is waiting")))
+    }
 }
