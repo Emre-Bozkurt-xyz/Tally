@@ -10,6 +10,7 @@ import tally.app.data.CategoryEntity
 import tally.app.data.MerchantEntity
 import tally.app.data.RawEventEntity
 import tally.app.data.RuleEntity
+import tally.app.data.SettlementEntity
 import tally.app.data.SplitEntity
 import tally.app.data.SyncDao
 import tally.app.data.TagEntity
@@ -99,6 +100,10 @@ fun syncTables(dao: SyncDao): List<SyncTable<*>> = listOf(
     SyncTable(
         "rules", RuleEntity.serializer(), { it.id }, { it.updatedAt }, { it.deleted },
         dao::rulesSince, dao::ruleUpdatedAt, dao::upsertRules,
+    ),
+    SyncTable(
+        "settlements", SettlementEntity.serializer(), { it.id }, { it.updatedAt }, { it.deleted },
+        dao::settlementsSince, dao::settlementUpdatedAt, dao::upsertSettlements,
     ),
     // Raw events are kept, never deleted: they're the source data parsers can re-run over.
     // Only bank and wallet ones sync, never notifications logged with "log all packages".

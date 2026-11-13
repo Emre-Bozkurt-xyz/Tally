@@ -41,7 +41,7 @@ setup from you (email) comes last, giving you time to make the app password.
 | Step | What | Needs from you | Status |
 |---|---|---|---|
 | 0 | Capture fixes: deposits, card payments, noise, late re-posts, Interac texts | Nothing | **Done** (`31bf494`, `26b1433`) |
-| 1 | One database migration (v8) for steps 2 and 3, synced everywhere | Nothing | To do |
+| 1 | One database migration (v8) for steps 2 and 3, synced everywhere | Nothing | **Done** |
 | 2 | Rules without a merchant (rent) and "What counts" | Nothing | To do |
 | 3 | Quick splits, balances per person, settling e-Transfers | Nothing | To do |
 | 4 | Receipts from email on the server | App password in `.env.production` | To do |
@@ -82,17 +82,18 @@ the physical card (it should arrive as an RBC withdrawal with no wallet alert).
 
 One Room migration and one server change, so steps 2 and 3 ship without another.
 
-- `categories.counted` (boolean, default true). Rent and Bills (and their subcategories) set
-  to false by the migration when they exist by those names.
-- `transactions.counted` (nullable boolean): null follows the category, true or false
+- [x] `categories.counted` (boolean, default true). Categories named Rent, Bills or Housing
+  (any case, with their subcategories) set to false by the migration, with a fresh `updatedAt`
+  so the change syncs. New installs seed Bills uncounted.
+- [x] `transactions.counted` (nullable boolean): null follows the category, true or false
   overrides it for this one transaction.
-- New table `settlements`: `id, person, amountCents, transactionId (the e-Transfer), differenceCents,
+- [x] New table `settlements`: `id, person, amountCents, transactionId (the e-Transfer), differenceCents,
   occurredAt, updatedAt, deleted`. `differenceCents` is what **Call it even** absorbed:
   positive when they paid less than owed, negative when more.
-- Synced like every other table (`SyncTables`, server `Rows`/`RowType`, `RowsSchemaTest`
+- [x] Synced like every other table (`SyncTables`, server `Rows`/`RowType`, `RowsSchemaTest`
   against `app/schemas/.../8.json`). Older phones ignore the new columns (merge over stored
   JSON already handles this).
-- Tests: `TallyDatabaseMigrationTest` 7 → 8 with data in place; the rule that Rent and Bills
+- [x] Tests: `TallyDatabaseMigrationTest` 7 → 8 with data in place; the rule that Rent and Bills
   start uncounted.
 
 ## 6. Step 2: rent rules and "What counts"

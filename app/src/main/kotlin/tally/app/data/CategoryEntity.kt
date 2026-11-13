@@ -1,5 +1,6 @@
 package tally.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -21,6 +22,11 @@ data class CategoryEntity(
     val pinned: Boolean,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    /**
+     * Counts toward the everyday number on Home and the widget. Off for fixed costs (rent,
+     * bills); a subcategory is off when its parent is. (v8)
+     */
+    @ColumnInfo(defaultValue = "1") val counted: Boolean = true,
 )
 
 @Entity(tableName = "accounts")

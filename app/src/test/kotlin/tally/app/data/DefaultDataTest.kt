@@ -57,6 +57,12 @@ class DefaultDataTest {
     }
 
     @Test
+    fun `bills and its subcategories start out of the everyday number`() {
+        val uncounted = DefaultData.categories().filterNot { it.counted }.map { it.name }.toSet()
+        assertEquals(setOf("Bills", "Phone", "Subscriptions"), uncounted)
+    }
+
+    @Test
     fun `pins four food subcategories`() {
         val pinned = DefaultData.categories().filter { it.pinned }.map { it.name }.toSet()
         assertEquals(setOf("Coffee", "Convenience", "Dining out", "Groceries"), pinned)

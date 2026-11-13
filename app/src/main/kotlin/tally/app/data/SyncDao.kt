@@ -100,6 +100,15 @@ interface SyncDao {
     @Upsert
     suspend fun upsertRules(rows: List<RuleEntity>)
 
+    @Query("SELECT * FROM settlements WHERE updatedAt >= :since")
+    suspend fun settlementsSince(since: Long): List<SettlementEntity>
+
+    @Query("SELECT updatedAt FROM settlements WHERE id = :id")
+    suspend fun settlementUpdatedAt(id: String): Long?
+
+    @Upsert
+    suspend fun upsertSettlements(rows: List<SettlementEntity>)
+
     /** Only bank and wallet notifications leave the phone, never the "log all packages" ones. */
     @Query("SELECT * FROM raw_events WHERE updatedAt >= :since AND source IN (:sources)")
     suspend fun rawEventsSince(since: Long, sources: Set<String>): List<RawEventEntity>

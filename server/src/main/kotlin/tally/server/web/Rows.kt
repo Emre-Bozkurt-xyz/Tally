@@ -31,6 +31,7 @@ data class TransactionRow(
     val kind: String,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    val counted: Boolean? = null,
 )
 
 @Serializable
@@ -61,6 +62,7 @@ data class CategoryRow(
     val pinned: Boolean,
     val updatedAt: Long,
     val deleted: Boolean = false,
+    val counted: Boolean = true,
 )
 
 @Serializable
@@ -111,6 +113,18 @@ data class RuleRow(
     val ask: Boolean = false,
 )
 
+@Serializable
+data class SettlementRow(
+    val id: String,
+    val person: String,
+    val amountCents: Long,
+    val transactionId: String?,
+    val differenceCents: Long,
+    val occurredAt: Long,
+    val updatedAt: Long,
+    val deleted: Boolean = false,
+)
+
 /** A synced table the dashboard reads and writes: its name and how its rows look. */
 class RowType<T>(
     val table: String,
@@ -148,6 +162,7 @@ object Rows {
     val merchants = RowType("merchants", MerchantRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
     val aliases = RowType("aliases", AliasRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
     val rules = RowType("rules", RuleRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
+    val settlements = RowType("settlements", SettlementRow.serializer(), { it.id }, { it.updatedAt }, { it.deleted })
 }
 
 private val rowJson = Json {

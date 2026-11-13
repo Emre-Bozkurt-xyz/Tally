@@ -10,6 +10,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,6 +57,7 @@ class TallyDatabaseMigrationTest {
         helper.runMigrationsAndValidate(5).close()
         helper.runMigrationsAndValidate(6).close()
         helper.runMigrationsAndValidate(7).close()
+        helper.runMigrationsAndValidate(8).close()
 
         val db = Room.databaseBuilder(context, TallyDatabase::class.java, dbFile.absolutePath)
             .setDriver(driver)
@@ -68,6 +71,59 @@ class TallyDatabaseMigrationTest {
 
             DefaultData.seedIfEmpty(db)
             assertEquals(DefaultData.categories().size, db.categoryDao().observeActive().first().size)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `7 to 8 takes rent and bills out of the everyday number and keeps the rest`() = runTest {
+        helper.createDatabase(7).use { connection ->
+            for ((id, name, parent) in listOf(
+                Triple("food", "Food", null),
+                Triple("coffee", "Coffee", "food"),
+                Triple("bills", "Bills", null),
+                Triple("phone", "Phone", "bills"),
+                Triple("rent", "rent", null),
+                Triple("old-rent", "Rent", null),
+            )) {
+                val deleted = if (id == "old-rent") 1 else 0
+                connection.execSQL(
+                    """
+                    INSERT INTO categories (id, name, parentId, monthlyBudgetCents, sortOrder, pinned, updatedAt, deleted)
+                    VALUES ('$id', '$name', ${parent?.let { "'$it'" } ?: "NULL"}, NULL, 0, 0, 5, $deleted)
+                    """.trimIndent(),
+                )
+            }
+            connection.execSQL(
+                """
+                INSERT INTO transactions (id, amountCents, currency, occurredAt, zoneId, accountId, merchantId,
+                    merchantRaw, categoryId, note, source, status, categorySource, kind, updatedAt, deleted)
+                VALUES ('t1', 75000, 'CAD', 1000, 'America/Toronto', NULL, NULL, NULL, 'rent', NULL,
+                    'RBC_ALERT', 'CONFIRMED', 'MANUAL', 'EXPENSE', 5, 0)
+                """.trimIndent(),
+            )
+        }
+
+        helper.runMigrationsAndValidate(8).close()
+
+        val db = Room.databaseBuilder(context, TallyDatabase::class.java, dbFile.absolutePath)
+            .setDriver(driver)
+            .build()
+        try {
+            val categories = db.categoryDao().observeAll().first().associateBy { it.id }
+            assertEquals(
+                mapOf("food" to true, "coffee" to true, "bills" to false, "phone" to false, "rent" to false, "old-rent" to true),
+                categories.mapValues { it.value.counted },
+            )
+            // Changed rows sync; untouched ones don't.
+            assertTrue(categories.getValue("rent").updatedAt > 5)
+            assertEquals(5L, categories.getValue("food").updatedAt)
+
+            val transaction = db.transactionDao().observeActive().first().single()
+            assertNull(transaction.counted)
+            assertEquals(75000L, transaction.amountCents)
+            assertTrue(db.syncDao().settlementsSince(0).isEmpty())
         } finally {
             db.close()
         }

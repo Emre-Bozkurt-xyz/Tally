@@ -60,6 +60,7 @@ object DefaultData {
         sortOrder = sortOrder,
         pinned = path in pinnedPaths,
         updatedAt = 0,
+        counted = path.substringBefore('/').lowercase() !in TallyDatabase.UNCOUNTED_NAMES,
     )
 
     private fun stableId(key: String): String = UUID.nameUUIDFromBytes("tally:$key".toByteArray()).toString()

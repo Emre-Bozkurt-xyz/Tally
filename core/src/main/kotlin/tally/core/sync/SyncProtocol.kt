@@ -51,6 +51,7 @@ object SyncProtocol {
         "aliases",
         "rules",
         "raw_events",
+        "settlements",
     )
 
     /** A phone clock this far ahead would win every conflict for days; refuse such rows. */
