@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import tally.core.model.CategoryKinds
 import tally.core.model.Kind
 import tally.core.model.TransactionStatus
+import tally.core.report.Counting
 import tally.core.report.LedgerEntry
 import tally.core.report.OwedMatch
 import tally.core.report.OwedPart
@@ -60,6 +61,9 @@ class Snapshot(
 
     fun parentOf(categoryId: String): String? = categoriesById[categoryId]?.parentId
 
+    /** What counts toward the everyday number: every category but the ones switched off (rent, bills). */
+    val counting = Counting(categories.filter { !it.counted }.map { it.id }.toSet(), ::parentOf)
+
     /** "Food/Coffee" (what rules and TOML use). */
     fun path(categoryId: String?): String? {
         val category = categoryId?.let { categoriesById[it] } ?: return null
@@ -101,7 +105,7 @@ class Snapshot(
     /** What reports count: each transaction, expanded by its splits (owed parts don't count). */
     val entries: List<LedgerEntry> = this.transactions.flatMap { t ->
         val kind = runCatching { Kind.valueOf(t.kind) }.getOrDefault(Kind.EXPENSE)
-        LedgerEntry(t.amountCents, kind, t.categoryId, date(t), t.merchantId)
+        LedgerEntry(t.amountCents, kind, t.categoryId, date(t), t.merchantId, t.counted)
             .withSplits(this.splits[t.id].orEmpty().map { SplitPart(it.amountCents, it.categoryId, it.owedBy) })
     }
 

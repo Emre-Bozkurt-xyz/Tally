@@ -10,12 +10,23 @@ import tally.core.report.Trends
 import java.time.LocalDate
 import java.time.YearMonth
 
-/** What the overview page shows for one month. */
+/**
+ * What the overview page shows for one month. Like the phone's Home, it's about everyday
+ * spending: categories switched off (rent, bills) show only as "fixed" beside the number.
+ */
 class Overview(val snapshot: Snapshot, val month: YearMonth, val today: LocalDate) {
-    val summary = MonthSummary.of(month, snapshot.entries, snapshot::parentOf)
-    val lastMonth = MonthSummary.of(month.minusMonths(1), snapshot.entries, snapshot::parentOf)
+    /** All spending, with the everyday and fixed parts. */
+    val summary = MonthSummary.of(month, snapshot.entries, snapshot.counting, snapshot::parentOf)
 
-    private val budgeted = snapshot.categoryTree.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) }
+    private val everydayEntries = snapshot.entries.filter { it.kind != Kind.EXPENSE || snapshot.counting.counts(it) }
+
+    /** Everyday spending only, by category: "Where it went". */
+    val everyday = MonthSummary.of(month, everydayEntries, parentOf = snapshot::parentOf)
+    val lastMonth = MonthSummary.of(month.minusMonths(1), everydayEntries, parentOf = snapshot::parentOf)
+
+    private val budgeted = snapshot.categoryTree
+        .filter { snapshot.counting.categoryCounts(it.id) }
+        .map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) }
     val budgetCents: Long? = Budgets.monthlyTotal(budgeted)
 
     /** A top-level category's budget: its own, or its subcategories' added up. */
@@ -30,14 +41,14 @@ class Overview(val snapshot: Snapshot, val month: YearMonth, val today: LocalDat
     val cumulativeLast: List<Long?> = running(month.minusMonths(1), until = null)
 
     /** A year of months, oldest first; the chart shows the last 6 or all 12. */
-    val months: List<MonthTotals> = Trends.months(snapshot.entries, month, count = 12)
+    val months: List<MonthTotals> = Trends.months(everydayEntries, month, count = 12)
 
     /** The month's latest transactions, newest first. */
     val recent = snapshot.transactions.filter { YearMonth.from(snapshot.date(it)) == month }.take(8)
-    val topMerchants = Trends.topMerchants(snapshot.entries, month.atDay(1), month.atEndOfMonth(), limit = 8)
+    val topMerchants = Trends.topMerchants(everydayEntries, month.atDay(1), month.atEndOfMonth(), limit = 8)
 
     private fun running(m: YearMonth, until: Int?): List<Long?> {
-        val byDay = snapshot.entries.filter { it.kind == Kind.EXPENSE && YearMonth.from(it.date) == m }
+        val byDay = everydayEntries.filter { it.kind == Kind.EXPENSE && YearMonth.from(it.date) == m }
             .groupBy { it.date.dayOfMonth }.mapValues { (_, list) -> list.sumOf { it.amountCents } }
         var total = 0L
         return (1..m.lengthOfMonth()).map { day ->

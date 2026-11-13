@@ -70,6 +70,7 @@ import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.ledger.occurredAtLocal
 import tally.app.ui.theme.Tally
 import tally.app.ui.theme.TallyIcons
+import tally.core.model.Money
 import tally.core.capture.WatchedPackages
 import tally.core.model.CategoryKinds
 import tally.core.report.OwedMatch
@@ -238,6 +239,7 @@ fun InboxScreen(
             transaction = transaction,
             merchantName = merchantName,
             categories = chips,
+            accountName = transaction.accountId?.let { accountNames[it] },
             onDismiss = { picking = null },
             onPick = { choice ->
                 picking = null
@@ -245,7 +247,13 @@ fun InboxScreen(
                     ledger.saveQuickEntry(transaction, transaction.amountCents, choice.category.id, transaction.accountId, transaction.note)
                     CaptureNotifier.cancel(context, transaction.id)
                     val always = choice.always
-                    if (always != null && transaction.merchantId != null && merchantName != null) {
+                    if (always != null && transaction.merchantId == null) {
+                        val changed = rules.alwaysFileAmount(transaction.amountCents, transaction.accountId, choice.category.id, always.applyToPast)
+                        snackbar.showSnackbar(
+                            "Rule added: ${Money.format(transaction.amountCents)} withdrawals → ${choice.category.name}" +
+                                if (always.applyToPast) " ($changed updated)" else "",
+                        )
+                    } else if (always != null && merchantName != null) {
                         val changed = rules.alwaysCategorize(
                             merchantId = transaction.merchantId,
                             merchantName = merchantName,

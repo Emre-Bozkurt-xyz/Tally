@@ -231,8 +231,9 @@ fun Route.dashboard(edits: WebEdits, rules: RulesEdits, suggester: RuleSuggester
         val name = f["name"].orEmpty()
         val budget = f["budget"].orEmpty()
         val pinned = f["pinned"] == "true"
-        val error = withContext(Dispatchers.IO) { rules.updateCategory(id, name, parent, budget, pinned, source()) }
-        if (error != null) return@edit html(categoryRowHtml(snapshot(), id, name, parent, budget, pinned, error))
+        val counted = f["counted"] == "true"
+        val error = withContext(Dispatchers.IO) { rules.updateCategory(id, name, parent, budget, pinned, counted, source()) }
+        if (error != null) return@edit html(categoryRowHtml(snapshot(), id, name, parent, budget, pinned, counted, error))
         section("#categories-editor", categoriesSectionHtml(snapshot()))
     }
     edit("/rules/category/{id}/delete") { id ->

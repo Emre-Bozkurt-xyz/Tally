@@ -62,6 +62,13 @@ class CategoryRepository(
         null
     }
 
+    /** Whether spending here counts toward the everyday number (Home, the widget). */
+    suspend fun setCounted(id: String, counted: Boolean): String? = write { all ->
+        val current = all.find { it.id == id } ?: return@write "That category no longer exists"
+        if (current.counted != counted) dao.upsertAll(listOf(current.copy(counted = counted, updatedAt = clock.millis())))
+        null
+    }
+
     suspend fun setPinned(id: String, pinned: Boolean): String? = write { all ->
         val current = all.find { it.id == id } ?: return@write "That category no longer exists"
         dao.upsertAll(listOf(current.copy(pinned = pinned, updatedAt = clock.millis())))

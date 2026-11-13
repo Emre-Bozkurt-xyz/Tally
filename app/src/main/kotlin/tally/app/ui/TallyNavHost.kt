@@ -102,6 +102,7 @@ fun TallyNavHost(container: AppContainer, openTransactionId: String? = null) {
                 composable(Tab.Home.route, enterTransition = { fadeIn(tween(220)) }, exitTransition = { fadeOut(tween(160)) }) {
                     HomeScreen(
                         ledger = container.ledger,
+                        categoryEdits = container.categories,
                         onOpenMonth = { open(Routes.MONTH) },
                         onOpenInbox = { nav.openTab(Tab.Inbox) },
                         onOpenActivity = { nav.openTab(Tab.Activity) },

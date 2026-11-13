@@ -24,6 +24,7 @@ import tally.app.ui.components.PillStyle
 import tally.app.ui.components.PillTone
 import tally.app.ui.components.ScreenPadding
 import tally.app.ui.components.StatusPill
+import tally.app.ui.components.SwitchRow
 import tally.app.ui.components.TallyCard
 import tally.app.ui.components.TallyTopBar
 import tally.app.ui.components.avatarKey
@@ -63,6 +64,8 @@ import tally.app.data.TagEntity
 import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.inbox.CategoryPickerSheet
+import tally.app.ui.ledger.counting
+import tally.app.ui.ledger.counts
 import tally.app.ui.ledger.dayLabel
 import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.ledger.occurredAtLocal
@@ -162,7 +165,7 @@ fun TransactionScreen(
                     icon = TallyIcons.Pencil,
                     modifier = Modifier.weight(1f),
                 )
-                if (t.merchantId != null) {
+                if (t.merchantId != null || (t.kind == Kind.EXPENSE.name && t.amountCents > 0)) {
                     PillButton("Always do this…", onClick = { picking = true }, style = PillStyle.Soft, icon = TallyIcons.Wand, modifier = Modifier.weight(1f))
                 }
             }
@@ -173,6 +176,31 @@ fun TransactionScreen(
                 DetailRow("When", "${dayLabel(local.toLocalDate(), LocalDate.now())}, ${TIME_FORMAT.format(local)}")
                 DetailRow("Source", sourceLabel(t.source))
                 t.note?.let { DetailRow("Note", it) }
+            }
+
+            if (t.kind == Kind.EXPENSE.name && t.amountCents > 0) {
+                val counting = remember(categories) { categories.counting() }
+                val byCategory = counting.categoryCounts(t.categoryId)
+                val counts = t.counts(counting)
+                TallyCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
+                    SwitchRow(
+                        "Counts toward everyday",
+                        checked = counts,
+                        // Back to following the category when it agrees, so a later change to the category still applies.
+                        onChange = { on -> scope.launch { ledger.setCounted(id, if (on == byCategory) null else on) } },
+                    )
+                    Text(
+                        when {
+                            t.counted == null && byCategory -> "In the number on Home and the widget, like everything in $categoryName."
+                            t.counted == null -> "$categoryName doesn't count toward the number on Home and the widget."
+                            counts -> "Counted, though $categoryName isn't."
+                            else -> "Left out of the number on Home and the widget, as a one-off."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Tally.colors.muted,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
             }
 
             TallyCard(Modifier.fillMaxWidth()) {
@@ -276,20 +304,25 @@ fun TransactionScreen(
                 onDismiss = { addingSplit = false },
             )
         }
-        if (picking && t.merchantId != null && merchantName != null) {
+        if (picking) {
             CategoryPickerSheet(
                 transaction = t,
-                merchantName = merchantName,
+                merchantName = merchantName?.takeIf { t.merchantId != null },
                 categories = chips,
+                accountName = accounts.find { it.id == t.accountId }?.name,
                 onDismiss = { picking = false },
                 onPick = { choice ->
                     picking = false
                     scope.launch {
                         ledger.saveQuickEntry(t, t.amountCents, choice.category.id, t.accountId, t.note)
                         CaptureNotifier.cancel(context, id)
-                        choice.always?.let { always ->
+                        val always = choice.always
+                        if (always != null && t.merchantId != null && merchantName != null) {
                             val changed = rules.alwaysCategorize(t.merchantId, merchantName, choice.category.id, always.maxAmountCents, always.applyToPast)
                             snackbar.showSnackbar("Rule added: $merchantName → ${choice.category.name} ($changed updated)")
+                        } else if (always != null) {
+                            val changed = rules.alwaysFileAmount(t.amountCents, t.accountId, choice.category.id, always.applyToPast)
+                            snackbar.showSnackbar("Rule added: ${Money.format(t.amountCents)} withdrawals → ${choice.category.name} ($changed updated)")
                         }
                     }
                 },

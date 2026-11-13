@@ -135,6 +135,15 @@ class LedgerRepository(
 
     suspend fun getTransaction(id: String): TransactionEntity? = transactions.getById(id)
 
+    /**
+     * Whether this one transaction counts toward the everyday number, whatever its category
+     * says ([counted] null goes back to following the category).
+     */
+    suspend fun setCounted(id: String, counted: Boolean?) {
+        val transaction = transactions.getById(id) ?: return
+        if (transaction.counted != counted) transactions.upsert(transaction.copy(counted = counted, updatedAt = clock.millis()))
+    }
+
     suspend fun transactionsSince(since: Instant): List<TransactionEntity> =
         transactions.getActiveSince(since.toEpochMilli())
 

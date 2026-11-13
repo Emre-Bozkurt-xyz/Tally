@@ -42,9 +42,9 @@ class RulesRepository(
 
     /** Adds ([rule].id not saved yet) or updates a rule. Returns an error message, or null. */
     suspend fun saveRule(rule: RuleEntity): String? {
-        Rule.patternError(rule.merchantPattern)?.let { return it }
         val min = rule.minAmountCents
         val max = rule.maxAmountCents
+        Rule.patternError(rule.merchantPattern, forRule = true, min, max)?.let { return it }
         if ((min != null && min < 0) || (max != null && max < 0)) return "Amounts can't be negative"
         if (min != null && max != null && min > max) return "The minimum is above the maximum"
         if (rule.tagsCsv.orEmpty().split(',').any { it.isNotEmpty() && it.isBlank() }) return "Empty tag"
@@ -248,6 +248,34 @@ class RulesRepository(
             }
         }
     }
+
+    /**
+     * "Always file $750.00 withdrawals from RBC Chequing here": a rule with no merchant for
+     * bank alerts of exactly [amountCents] on [accountId] (any account when null). Updates the
+     * existing rule for that amount and account rather than adding another, and puts it first.
+     * Returns how many past transactions changed ([applyToPast]).
+     */
+    suspend fun alwaysFileAmount(amountCents: Long, accountId: String?, categoryId: String, applyToPast: Boolean): Int =
+        db.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                val now = clock.millis()
+                val active = rules.getActive()
+                val first = active.minOfOrNull { it.priority } ?: 0
+                val same = active.filter {
+                    Rule(it.id, it.priority, it.merchantPattern, categoryId = it.categoryId).noMerchant &&
+                        it.minAmountCents == amountCents && it.maxAmountCents == amountCents && it.accountId == accountId
+                }
+                val kept = same.firstOrNull()
+                val rule = (kept ?: RuleEntity(UUID.randomUUID().toString(), 0, "", amountCents, amountCents, accountId, categoryId, null, now)).copy(
+                    priority = if (kept != null && kept.priority == first) first else first - 1,
+                    categoryId = categoryId,
+                    ask = false,
+                    updatedAt = now,
+                )
+                rules.upsertAll(listOf(rule) + same.drop(1).map { it.copy(deleted = true, updatedAt = now) })
+                if (applyToPast) db.transactionDao().categorizeBare(amountCents, accountId, categoryId, now) else 0
+            }
+        }
 
     private suspend fun apply(document: RulesDocument, accountIds: Map<String, String>) {
         val now = clock.millis()

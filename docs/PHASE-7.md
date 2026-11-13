@@ -42,7 +42,7 @@ setup from you (email) comes last, giving you time to make the app password.
 |---|---|---|---|
 | 0 | Capture fixes: deposits, card payments, noise, late re-posts, Interac texts | Nothing | **Done** (`31bf494`, `26b1433`) |
 | 1 | One database migration (v8) for steps 2 and 3, synced everywhere | Nothing | **Done** |
-| 2 | Rules without a merchant (rent) and "What counts" | Nothing | To do |
+| 2 | Rules without a merchant (rent) and "What counts" | Nothing | **Done** |
 | 3 | Quick splits, balances per person, settling e-Transfers | Nothing | To do |
 | 4 | Receipts from email on the server | App password in `.env.production` | To do |
 | 5 | Notifications on the phone for inbox items the server adds | Nothing | To do |
@@ -102,35 +102,39 @@ One Room migration and one server change, so steps 2 and 3 ship without another.
 
 Rent arrives as a bare chequing withdrawal, so no merchant pattern can match it.
 
-- A rule may leave the merchant blank if it has an amount condition: it then matches only
-  transactions **without** a merchant. Blank merchant and no amount stays an error (it would
+- [x] A rule may leave the merchant blank if it has an amount condition: it then matches only
+  money out **without** a merchant. Blank merchant and no amount stays an error (it would
   catch everything).
-- `RulesEngine.match` checks these rules when `merchant == null`; patterned rules work as
+- [x] If a wallet names the store after a no-merchant rule filed the bank alert ($20.00 at a
+  shop, not Presto), the capture is filed again by the store.
+- [x] `RulesEngine.match` checks these rules when `merchant == null`; patterned rules work as
   today.
-- TOML: `merchant = ""` with `min`/`max`. Editor: "No merchant (bank alert only)" chip next to
-  the merchant field; the match preview counts bare transactions instead of merchant names.
-- Seed nothing automatically; offer it: when you file a bare withdrawal, "Always file
-  $750.00 withdrawals from RBC Chequing here?" (exact amount, that account).
+- [x] TOML: `merchant = ""` with `min_amount`/`max_amount`. Editor: "No merchant (bank alert
+  only)" chip under the merchant field. Not done: a match count for bare transactions in the
+  editor's preview.
+- [x] Seed nothing automatically; offer it: when you file a bare withdrawal (inbox or "Always
+  do this…"), "Always file $750.00 withdrawals from RBC Chequing here" (exact amount, that
+  account; one rule per amount and account).
 - Re-run on what's waiting with the existing Apply.
 
 ### What counts
 
-- Effective rule: a transaction counts toward the everyday number if it's spending (EXPENSE)
+- [x] Effective rule (`Counting` in core): a transaction counts toward the everyday number if it's spending (EXPENSE)
   and its own `counted` override says so, otherwise its category's (a subcategory is uncounted
   when its parent is). Transfers never count; income is shown separately as today.
-- `LedgerEntry` gains `counted`; `MonthSummary`, `WeekSpend` and the running-total chart take
+- [x] `LedgerEntry` gains `counted`; `MonthSummary`, `WeekSpend` and the running-total chart take
   counted spending for the headline and keep the full total alongside.
-- **Home hero:** "$612.40 everyday" with "+ $750.00 fixed · $1,362.40 in all" underneath.
+- [x] **Home hero:** "$612.40 everyday" with "+ $750.00 fixed · $1,362.40 in all" underneath.
   Budget bar and pace tick use counted spending against budgets of counted categories.
-- **Tap the hero → "What counts" sheet:** each top-level category with this month's amount and
+- [x] **Tap the line under the number → "What counts" sheet:** each top-level category with this month's amount and
   a switch; subcategories inside. Changes apply everywhere at once (Home, widget, chart).
-- **Per transaction:** "Don't count this" / "Count this" in the detail screen and as a long-press
-  action in Activity, for one-offs (a laptop, a flight).
-- **Widget:** "This week" uses counted spending.
-- **Month screen** keeps everything, with uncounted categories in their own "Fixed" group.
-- **Dashboard:** same number and the same switches (Overview hero; a "What counts" panel on the
-  Rules page next to categories).
-- Tests: report maths in core (counted vs all, overrides both ways, parent off), app repository
+- [x] **Per transaction:** a "Counts toward everyday" switch in the detail screen, for one-offs
+  (a laptop, a flight). Not done: a long-press action in Activity.
+- [x] **Widget:** "This week" uses counted spending (and budgets of counted categories).
+- [x] **Month screen** keeps everything, with uncounted categories in their own "Fixed" group.
+- [x] **Dashboard:** same number on the Overview hero (its "fixed" line links to the switches),
+  and a "Counts" column in the Rules page's categories.
+- [x] Tests: report maths in core (counted vs all, overrides both ways, parent off), app repository
   tests, dashboard test for the hero text.
 
 ## 7. Step 3: splits and settling

@@ -144,7 +144,10 @@ main { padding: 1.75rem 2.25rem 4rem; max-width: 1240px; width:100%; }
 .card-head { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:1rem; flex-wrap:wrap; }
 .card-head h2 { margin:0; }
 .hero { background:var(--hero); color:var(--on-hero); border-radius:30px; padding:1.6rem 1.75rem; display:flex; flex-direction:column; gap:.9rem; justify-content:space-between; min-height:15rem; }
-.hero .big + * { margin-top:auto; }
+.hero .fixed-note + * { margin-top:auto; }
+.hero .fixed-note { color:var(--on-hero-muted); font-size:.85rem; margin-top:-.5rem; text-decoration:none; align-self:flex-start; }
+.hero .fixed-note:hover { color:var(--on-hero); text-decoration:underline; }
+.hero .fixed-note::after { content:" ›"; }
 .hero .mono-label { color:var(--on-hero-muted); }
 .hero .row-between { display:flex; justify-content:space-between; gap:1rem; align-items:center; flex-wrap:wrap; }
 .hero .big { font-size:4.2rem; line-height:1; letter-spacing:-.05em; font-weight:600; }

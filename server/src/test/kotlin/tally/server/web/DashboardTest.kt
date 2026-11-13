@@ -93,6 +93,27 @@ class DashboardTest {
     }
 
     @Test
+    fun `the overview leads with everyday spending, and the rules page chooses what counts`() = app {
+        val rent = CategoryRow("rent", "Rent", null, null, 2, false, 0, counted = false)
+        sync.write(
+            listOf(
+                Rows.categories.encode(rent, null),
+                Rows.transactions.encode(tx("t-rent", 750_00, 3, null, "rent", TransactionStatus.CONFIRMED, CategorySource.RULE), null),
+            ),
+        )
+        val html = client.get("/").bodyAsText().text()
+        assertTrue("Everyday in October" in html, html)
+        assertTrue("+ \$750.00 fixed · \$788.57 in all" in html, "rent shows beside the number")
+        assertTrue("\$361.43 left" in html, "the food budget is untouched by rent")
+        assertFalse("Rent" in html.substringAfter("Where it went").substringBefore("Recent"), "where it went is everyday only")
+
+        edit("/rules/category/rent/save", "name" to "Rent", "parent" to "", "budget" to "", "counted" to "true")
+        assertTrue(edits.snapshot().categoriesById.getValue("rent").counted)
+        val after = client.get("/").bodyAsText().text()
+        assertTrue("Spent in October" in after && "Everything counts" in after)
+    }
+
+    @Test
     fun `ledger filters by category tree, account and text`() = app {
         val all = client.get("/ledger").bodyAsText()
         assertTrue("2 transactions" in all)

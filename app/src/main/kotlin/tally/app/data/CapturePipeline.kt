@@ -11,6 +11,7 @@ import tally.core.capture.ParseResult
 import tally.core.capture.WatchedPackages
 import tally.core.dedupe.CaptureDeduper
 import tally.core.dedupe.DedupeCandidate
+import tally.core.model.CategorySource
 import tally.core.model.Kind
 import tally.core.model.ParseStatus
 import tally.core.model.Source
@@ -158,6 +159,11 @@ class CapturePipeline(
         var merged = existing.copy(occurredAt = minOf(existing.occurredAt, capture.occurredAt.toEpochMilli()))
         if (merchant != null && (merged.merchantId == null || CaptureDeduper.prefersMerchantFrom(capture.source))) {
             merged = merged.copy(merchantId = merchant.id, merchantRaw = capture.merchantRaw)
+            // A rule for bare bank alerts ("$20.00 withdrawals are Presto") filed it before the
+            // wallet named the store: file it again by the store.
+            if (existing.merchantId == null && existing.categorySource == CategorySource.RULE.name) {
+                merged = merged.copy(categoryId = null, categorySource = null, status = TransactionStatus.CAPTURED.name)
+            }
         }
         // The bank knows the account for sure; a wallet's card can belong to either account.
         if (accountId != null && (merged.accountId == null || capture.source == Source.RBC_ALERT)) {

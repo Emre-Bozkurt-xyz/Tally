@@ -57,6 +57,13 @@ sealed interface TomlImport {
  * category = "Transport/Rideshare"
  * account = "RBC Visa"
  * tags = ["rideshare"]
+ *
+ * [[rule]]
+ * merchant = ""          # no merchant: bank alerts alone, matched by amount
+ * min_amount = 750.00
+ * max_amount = 750.00
+ * category = "Rent"
+ * account = "RBC Chequing"
  * ```
  *
  * Supports the subset of TOML the file needs: comments, `[table]`, `[[array of tables]]`, bare
@@ -247,7 +254,7 @@ object RulesToml {
                 }
             } ?: false
 
-            merchant?.let { pattern -> Rule.patternError(pattern)?.let { errors += TomlError(fields.getValue("merchant").first, it) } }
+            merchant?.let { pattern -> Rule.patternError(pattern, forRule = true, min, max)?.let { errors += TomlError(fields.getValue("merchant").first, it) } }
             if (category != null && category !in paths) {
                 errors += TomlError(fields.getValue("category").first, "Unknown category \"$category\"")
             }

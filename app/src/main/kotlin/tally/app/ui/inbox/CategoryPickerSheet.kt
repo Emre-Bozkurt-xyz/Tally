@@ -32,6 +32,7 @@ import tally.app.ui.components.MonoLabel
 import tally.app.ui.components.PillChip
 import tally.app.ui.components.SwitchRow
 import tally.app.ui.theme.Tally
+import tally.core.model.Kind
 import tally.core.model.Money
 
 /** What you chose in the picker. [always] is null unless you ticked "Always put … here". */
@@ -40,8 +41,9 @@ data class CategoryChoice(val category: CategoryEntity, val always: AlwaysRule?)
 data class AlwaysRule(val maxAmountCents: Long?, val applyToPast: Boolean)
 
 /**
- * Pick a category for a capture, optionally turning the choice into a rule for its merchant.
- * [merchantName] null hides the rule options (nothing to match on).
+ * Pick a category for a capture, optionally turning the choice into a rule: for its merchant,
+ * or, for a bank alert with no merchant (rent leaving chequing), for that exact amount on
+ * [accountName]'s account.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +51,7 @@ fun CategoryPickerSheet(
     transaction: TransactionEntity,
     merchantName: String?,
     categories: List<CategoryEntity>,
+    accountName: String? = null,
     onPick: (CategoryChoice) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -95,6 +98,13 @@ fun CategoryPickerSheet(
                             )
                         },
                     )
+                }
+            }
+            if (merchantName == null && transaction.amountCents > 0 && transaction.kind == Kind.EXPENSE.name) {
+                Column {
+                    val from = accountName?.let { " from $it" }.orEmpty()
+                    SwitchRow("Always file ${Money.format(transaction.amountCents)} withdrawals$from here", always, { always = it })
+                    if (always) SwitchRow("Also change past ones", applyToPast, { applyToPast = it })
                 }
             }
             if (merchantName != null) {

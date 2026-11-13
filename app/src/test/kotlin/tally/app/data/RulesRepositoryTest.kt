@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -139,6 +140,28 @@ class RulesRepositoryTest {
         val rule = active.first()
         assertEquals(diningOut, rule.categoryId)
         assertFalse(rule.ask)
+    }
+
+    @Test
+    fun `always file a bare withdrawal by its amount and account, one rule per amount`() = runTest {
+        val chequing = DefaultData.accountId("RBC Chequing")
+        val bills = DefaultData.categoryId("Bills")
+        val rent = TransactionEntity(
+            id = "rent-oct", amountCents = 750_00, currency = "CAD", occurredAt = 1_000, zoneId = "America/Toronto",
+            accountId = chequing, merchantId = null, merchantRaw = null, categoryId = null, note = null,
+            source = "RBC_ALERT", status = TransactionStatus.CAPTURED.name, categorySource = null, kind = "EXPENSE", updatedAt = 1,
+        )
+        db.transactionDao().upsert(rent)
+        db.transactionDao().upsert(rent.copy(id = "visa-750", accountId = DefaultData.accountId("RBC Visa")))
+
+        assertEquals(1, repo.alwaysFileAmount(750_00, chequing, DefaultData.categoryId("Health"), applyToPast = true))
+        assertEquals(0, repo.alwaysFileAmount(750_00, chequing, bills, applyToPast = false))
+
+        val rule = db.ruleDao().getActive().single()
+        assertEquals("" to (750_00L to 750_00L), rule.merchantPattern to (rule.minAmountCents to rule.maxAmountCents))
+        assertEquals(chequing to bills, rule.accountId to rule.categoryId)
+        assertEquals(TransactionStatus.CONFIRMED.name, db.transactionDao().getById("rent-oct")?.status)
+        assertNull(db.transactionDao().getById("visa-750")?.categoryId)
     }
 
     @Test

@@ -233,7 +233,7 @@ private fun RuleRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val name = Rule.literalName(rule.merchantPattern)
+    val name = if (rule.merchantPattern.isBlank()) NO_MERCHANT else Rule.literalName(rule.merchantPattern)
     Row(
         modifier
             .fillMaxWidth()
@@ -274,6 +274,8 @@ private fun RuleRow(
         }
     }
 }
+
+private const val NO_MERCHANT = "Bank alerts, no merchant"
 
 private fun newRule(categories: List<CategoryEntity>) = RuleEntity(
     id = UUID.randomUUID().toString(),
@@ -325,6 +327,8 @@ private fun RuleSheet(
 ) {
     val scope = rememberCoroutineScope()
     var pattern by remember { mutableStateOf(rule.merchantPattern) }
+    // A saved rule with a blank pattern matches bank alerts that name no merchant (rent).
+    var noMerchant by remember { mutableStateOf(rule.merchantPattern.isBlank() && rule.updatedAt > 0) }
     var categoryId by remember { mutableStateOf(rule.categoryId) }
     var ask by remember { mutableStateOf(rule.ask) }
     var min by remember { mutableStateOf(amountText(rule.minAmountCents)) }
@@ -349,7 +353,7 @@ private fun RuleSheet(
         }
         val tagList = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
         val updated = rule.copy(
-            merchantPattern = pattern.trim(),
+            merchantPattern = if (noMerchant) "" else pattern.trim(),
             categoryId = categoryId,
             ask = ask,
             minAmountCents = minCents.getOrNull(),
@@ -368,21 +372,32 @@ private fun RuleSheet(
         onDismiss = onDismiss,
         primary = "Save",
         onPrimary = ::save,
-        primaryEnabled = categoryId.isNotEmpty() && pattern.isNotBlank(),
+        primaryEnabled = categoryId.isNotEmpty() && (noMerchant || pattern.isNotBlank()),
         onDelete = if (isNew) null else ({ scope.launch { onDelete(); onDismiss() } }),
         error = error,
     ) {
         FieldLabel("Merchant")
-        SoftTextField(pattern, { pattern = it; error = null }, "Tim Hortons, or Uber.* for all Uber", leading = TallyIcons.Store)
-        FieldHint(
-            when {
-                pattern.isBlank() -> "The whole cleaned-up name, any capitalization. Regex works too: A|B, Uber.*"
-                matches == null -> "That pattern isn't valid yet"
-                matches.isEmpty() -> "Matches no merchant you've bought from yet"
-                else -> "Matches ${matches.size}: " + matches.take(4).joinToString(", ") + if (matches.size > 4) ", …" else ""
-            },
-            color = if (matches == null && pattern.isNotBlank()) Tally.colors.over else Tally.colors.muted,
+        if (!noMerchant) {
+            SoftTextField(pattern, { pattern = it; error = null }, "Tim Hortons, or Uber.* for all Uber", leading = TallyIcons.Store)
+            FieldHint(
+                when {
+                    pattern.isBlank() -> "The whole cleaned-up name, any capitalization. Regex works too: A|B, Uber.*"
+                    matches == null -> "That pattern isn't valid yet"
+                    matches.isEmpty() -> "Matches no merchant you've bought from yet"
+                    else -> "Matches ${matches.size}: " + matches.take(4).joinToString(", ") + if (matches.size > 4) ", …" else ""
+                },
+                color = if (matches == null && pattern.isNotBlank()) Tally.colors.over else Tally.colors.muted,
+            )
+        }
+        PillChip(
+            "No merchant (bank alert only)",
+            selected = noMerchant,
+            onClick = { noMerchant = !noMerchant; error = null },
+            leading = TallyIcons.Wallet,
         )
+        if (noMerchant) {
+            FieldHint("For money out the bank reports without a store, like rent leaving chequing. Set the amount below; a purchase a wallet names never matches.")
+        }
 
         FieldLabel("Then")
         Segmented(listOf("File it", "Ask me"), if (ask) 1 else 0, { ask = it == 1 }, Modifier.fillMaxWidth())

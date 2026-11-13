@@ -19,6 +19,7 @@ class RulesTomlTest {
             RuleSpec("Uber", "Transport/Rideshare", maxAmountCents = 15_00, account = "RBC Visa", tags = listOf("rideshare")),
             RuleSpec("A&W \\(Main\\)", "Food/Dining out", minAmountCents = 5, maxAmountCents = 120_50),
             RuleSpec("Shoppers.*", "Health"),
+            RuleSpec("", "Health", minAmountCents = 750_00, maxAmountCents = 750_00, account = "RBC Chequing"),
         ),
     )
 
@@ -32,6 +33,20 @@ class RulesTomlTest {
         val imported = (import(text) as TomlImport.Ok).document
         assertEquals(document, imported)
         assertEquals(text, RulesToml.export(imported))
+    }
+
+    @Test
+    fun `a rule with no merchant needs an amount`() {
+        val text = """
+            [categories]
+            Rent = []
+
+            [[rule]]
+            merchant = ""
+            category = "Rent"
+        """.trimIndent()
+        assertEquals(listOf(5 to Rule.NO_MERCHANT_NEEDS_AMOUNT), errors(text).map { it.line to it.message })
+        assertInstanceOf(TomlImport.Ok::class.java, import(text + "\nmin_amount = 750"))
     }
 
     @Test

@@ -236,6 +236,32 @@ class CapturePipelineTest {
         assertTrue(named.needsReview)
     }
 
+    private suspend fun rule(pattern: String, cents: Long, categoryId: String, accountId: String? = null) =
+        RulesRepository(db, clock).saveRule(
+            RuleEntity(UUID.randomUUID().toString(), 0, pattern, cents, cents, accountId, categoryId, null, 0),
+        ).also { assertNull(it) }
+
+    @Test
+    fun `a rule with no merchant files rent, and steps aside when a wallet names the store`() = runTest {
+        knowChequing()
+        val transit = DefaultData.categoryId("Transport/Transit")
+        rule("", 750_00, DefaultData.categoryId("Bills"), chequing)
+        rule("", 20_00, transit)
+
+        val rent = rbc(t0, cents = "750.00").captured()
+        assertEquals(DefaultData.categoryId("Bills"), rent.transaction.categoryId)
+        assertEquals(TransactionStatus.CONFIRMED.name, rent.transaction.status)
+        assertEquals(false, rent.needsReview)
+
+        // $20.00 at a store: filed as Presto for the 20 s until the wallet's notice names it.
+        val t1 = t0.plus(Duration.ofDays(1))
+        assertEquals(transit, rbc(t1, cents = "20.00").captured().transaction.categoryId)
+        val named = wallet(t1.plusSeconds(20), "20.00").captured()
+        assertEquals("FOODIE FRUITIE", named.transaction.merchantRaw)
+        assertNull(named.transaction.categoryId)
+        assertEquals(TransactionStatus.CAPTURED.name, named.transaction.status)
+    }
+
     @Test
     fun `reparse picks up events stored before the pipeline existed, in order`() = runTest {
         for ((source, title, text, at) in listOf(

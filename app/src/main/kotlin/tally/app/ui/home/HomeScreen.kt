@@ -23,7 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
+import tally.app.data.CategoryRepository
 import tally.app.data.LedgerRepository
 import tally.app.ui.components.AmountText
 import tally.app.ui.components.CumulativeChart
@@ -52,6 +56,7 @@ import tally.app.ui.components.TransactionRow
 import tally.app.ui.components.avatarKey
 import tally.app.ui.components.compactMoney
 import tally.app.ui.components.groupShape
+import tally.app.ui.ledger.counting
 import tally.app.ui.ledger.dayLabel
 import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.ledger.ledgerEntries
@@ -63,6 +68,7 @@ import tally.core.model.Money
 import tally.core.report.BudgetStatus
 import tally.core.report.BudgetedCategory
 import tally.core.report.Budgets
+import tally.core.report.Counting
 import tally.core.report.LedgerEntry
 import tally.core.report.MonthSummary
 import tally.core.report.Trends
@@ -77,10 +83,15 @@ private val MONTH_FULL = DateTimeFormatter.ofPattern("MMMM")
 private val HEADER_DATE = DateTimeFormatter.ofPattern("EEEE · MMM d")
 private val TIME = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 
-/** The month at a glance: what you've spent, how it's going, what needs you, and the latest. */
+/**
+ * The month at a glance: what you've spent, how it's going, what needs you, and the latest.
+ * The numbers are everyday spending: categories switched off in "What counts" (rent, bills)
+ * are shown as "fixed" beside it, and in full on the month screen.
+ */
 @Composable
 fun HomeScreen(
     ledger: LedgerRepository,
+    categoryEdits: CategoryRepository,
     onOpenMonth: () -> Unit,
     onOpenInbox: () -> Unit,
     onOpenActivity: () -> Unit,
@@ -102,13 +113,21 @@ fun HomeScreen(
         val bySplit = splits.groupBy { it.transactionId }
         transactions.orEmpty().flatMap { it.ledgerEntries(bySplit[it.id].orEmpty()) }
     }
-    val summary = remember(entries, byId) { MonthSummary.of(month, entries) { byId[it]?.parentId } }
-    val budget = remember(categories) {
-        Budgets.monthlyTotal(categories.filter { !it.deleted }.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) })
+    val counting = remember(categories) { categories.counting() }
+    val summary = remember(entries, byId, counting) { MonthSummary.of(month, entries, counting) { byId[it]?.parentId } }
+    // Everyday spending only: what the chart, the bars and "Where it went" show.
+    val everyday = remember(entries, counting) { entries.filter { it.kind != Kind.EXPENSE || counting.counts(it) } }
+    val everydaySummary = remember(everyday, byId) { MonthSummary.of(month, everyday) { byId[it]?.parentId } }
+    val budget = remember(categories, counting) {
+        Budgets.monthlyTotal(
+            categories.filter { !it.deleted && counting.categoryCounts(it.id) }.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) },
+        )
     }
-    val thisMonth = remember(entries) { runningTotal(entries, month).take(today.dayOfMonth) }
-    val lastMonth = remember(entries) { runningTotal(entries, month.minusMonths(1)) }
+    val thisMonth = remember(everyday) { runningTotal(everyday, month).take(today.dayOfMonth) }
+    val lastMonth = remember(everyday) { runningTotal(everyday, month.minusMonths(1)) }
     var range by rememberSaveable { mutableIntStateOf(0) }
+    var choosing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -121,11 +140,13 @@ fun HomeScreen(
             HeroCard(
                 month = month,
                 today = today,
-                spentCents = summary.spentCents,
+                spentCents = summary.everydayCents,
+                fixed = fixedNote(summary, categories, counting),
                 incomeCents = summary.incomeCents,
                 budgetCents = budget,
                 sameDayLastMonth = lastMonth.getOrNull(minOf(today.dayOfMonth, lastMonth.size) - 1),
                 onClick = onOpenMonth,
+                onWhatCounts = { choosing = true },
                 modifier = Modifier.padding(horizontal = ScreenPadding),
             )
         }
@@ -174,7 +195,7 @@ fun HomeScreen(
                     }
                     else -> {
                         val count = if (range == 1) 6 else 12
-                        val months = remember(entries, count) { Trends.months(entries, month, count) }
+                        val months = remember(everyday, count) { Trends.months(everyday, month, count) }
                         val average = months.dropLast(1).map { it.spentCents }.filter { it > 0 }.let { if (it.isEmpty()) 0 else it.sum() / it.size }
                         MonthBarChart(
                             values = months.map { it.spentCents.coerceAtLeast(0) },
@@ -197,9 +218,9 @@ fun HomeScreen(
                 }
             }
         }
-        if (summary.categories.isNotEmpty()) {
+        if (everydaySummary.categories.isNotEmpty()) {
             item(key = "categories-header") { SectionHeader("Where it went", action = "Details", onAction = onOpenMonth) }
-            val shown = summary.categories.filter { it.cents > 0 }.take(5)
+            val shown = everydaySummary.categories.filter { it.cents > 0 }.take(5)
             itemsIndexed(shown, key = { _, it -> "category:${it.categoryId}" }) { index, total ->
                 val name = total.categoryId?.let { byId[it]?.name } ?: "Uncategorized"
                 val categoryBudget = total.categoryId?.let { byId[it]?.monthlyBudgetCents }
@@ -226,7 +247,7 @@ fun HomeScreen(
                                     BudgetStatus.OVER -> Tally.colors.over
                                 }
                             } else {
-                                (if (summary.spentCents > 0) total.cents.toFloat() / summary.spentCents else 0f) to MaterialTheme.colorScheme.secondary
+                                (if (everydaySummary.spentCents > 0) total.cents.toFloat() / everydaySummary.spentCents else 0f) to MaterialTheme.colorScheme.secondary
                             }
                             ThinProgress(fraction, color, Tally.colors.chip, height = 4.dp)
                         }
@@ -272,6 +293,32 @@ fun HomeScreen(
             }
         }
     }
+
+    if (choosing) {
+        val monthCents = remember(entries) {
+            entries.filter { it.kind == Kind.EXPENSE && YearMonth.from(it.date) == month && it.categoryId != null }
+                .groupBy { it.categoryId!! }
+                .mapValues { (_, list) -> list.sumOf { it.amountCents } }
+        }
+        WhatCountsSheet(
+            categories = categories,
+            monthCents = monthCents,
+            onSetCounted = { id, counted -> scope.launch { categoryEdits.setCounted(id, counted) } },
+            onDismiss = { choosing = false },
+        )
+    }
+}
+
+/**
+ * The line under the hero's number: "+ $750.00 fixed · $1,362.40 in all" when something
+ * didn't count this month, "Not counting Rent, Bills" when nothing switched off was spent
+ * yet, or null when everything counts.
+ */
+private fun fixedNote(summary: MonthSummary, categories: List<tally.app.data.CategoryEntity>, counting: Counting): String? {
+    if (summary.fixedCents != 0L) return "+ ${Money.format(summary.fixedCents)} fixed · ${Money.format(summary.spentCents)} in all"
+    val off = categories.filter { !it.deleted && !it.counted && (it.parentId == null || counting.categoryCounts(it.parentId)) }
+    if (off.isEmpty()) return null
+    return "Not counting " + off.take(3).joinToString { it.name } + if (off.size > 3) " and more" else ""
 }
 
 /** The dark card: spent this month, against the budget (with a tick for an even pace) or last month. */
@@ -280,22 +327,36 @@ private fun HeroCard(
     month: YearMonth,
     today: LocalDate,
     spentCents: Long,
+    /** What didn't count ([fixedNote]); tapping it opens "What counts". */
+    fixed: String?,
     incomeCents: Long,
     budgetCents: Long?,
     sameDayLastMonth: Long?,
     onClick: () -> Unit,
+    onWhatCounts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = Tally.colors
     val monthName = MONTH_FULL.format(month)
     TallyCard(modifier.fillMaxWidth(), onClick = onClick, color = colors.hero, shape = RoundedCornerShape(28.dp), padding = PaddingValues(22.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            MonoLabel("Spent in $monthName", Modifier.weight(1f), color = colors.onHeroMuted)
+            MonoLabel(if (fixed != null) "Everyday in $monthName" else "Spent in $monthName", Modifier.weight(1f), color = colors.onHeroMuted)
             MonoLabel("Day ${today.dayOfMonth} of ${month.lengthOfMonth()}", color = colors.onHeroMuted)
         }
         Spacer(Modifier.height(10.dp))
         AmountText(spentCents, MaterialTheme.typography.displayLarge, color = colors.onHero, centsScale = 0.5f, centsAlpha = 0.45f)
-        Spacer(Modifier.height(14.dp))
+        Row(
+            Modifier
+                .padding(top = 2.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onWhatCounts)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(fixed ?: "Everything counts", style = MaterialTheme.typography.bodySmall, color = colors.onHeroMuted)
+            Icon(TallyIcons.Forward, "What counts", Modifier.padding(start = 2.dp).size(14.dp), tint = colors.onHeroMuted)
+        }
+        Spacer(Modifier.height(10.dp))
         if (budgetCents != null && budgetCents > 0) {
             val left = budgetCents - spentCents
             val color = when (BudgetStatus.of(spentCents, budgetCents)) {

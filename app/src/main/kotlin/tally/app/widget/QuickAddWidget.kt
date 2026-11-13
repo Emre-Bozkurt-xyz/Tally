@@ -53,6 +53,7 @@ import tally.app.data.CategoryEntity
 import tally.app.data.LedgerRepository
 import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
+import tally.app.ui.ledger.counting
 import tally.app.ui.ledger.ledgerEntries
 import tally.core.entry.CategoryRanking
 import tally.core.model.Money
@@ -126,13 +127,18 @@ class QuickAddWidget : GlanceAppWidget() {
                 val splits = ledger.observeAllSplits().first().groupBy { it.transactionId }
                 val entries = ledger.transactionsSince(since).flatMap { it.ledgerEntries(splits[it.id].orEmpty()) }
                 val categories = ledger.observeCategories().first()
+                val counting = ledger.observeAllCategories().first().counting()
+                // The everyday number: rent and bills (whatever's switched off) stay out, budgets too.
                 val week = WeekSpend.of(
                     entries = entries,
                     today = today,
                     firstDayOfWeek = firstDay,
                     monthlyBudgetsCents = listOfNotNull(
-                        Budgets.monthlyTotal(categories.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) }),
+                        Budgets.monthlyTotal(
+                            categories.filter { counting.categoryCounts(it.id) }.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) },
+                        ),
                     ),
+                    counting = counting,
                 )
                 val choices = categories.chipCategories()
                 val byId = choices.associateBy { it.id }

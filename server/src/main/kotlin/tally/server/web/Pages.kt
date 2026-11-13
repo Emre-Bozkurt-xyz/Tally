@@ -157,16 +157,21 @@ fun FlowContent.overview(o: Overview) {
     div("overview") {
         // The hero: spent this month, against the budget with a tick for an even pace.
         div("hero span-7") {
+            val spent = o.summary.everydayCents
+            val fixed = o.summary.fixedCents != 0L
             div("row-between") {
-                monoLabel("Spent in ${o.month.format(monthName)}")
+                monoLabel("${if (fixed) "Everyday" else "Spent"} in ${o.month.format(monthName)}")
                 if (current) monoLabel("Day ${o.today.dayOfMonth} of ${o.month.lengthOfMonth()}")
             }
-            div("big") { amount(o.summary.spentCents) }
+            div("big") { amount(spent) }
+            a(href = "/rules#categories-editor", classes = "fixed-note") {
+                attributes["title"] = "Choose what counts"
+                +if (fixed) "+ ${Money.format(o.summary.fixedCents)} fixed · ${Money.format(o.summary.spentCents)} in all" else "Everything counts"
+            }
             o.budgetCents?.let { budget ->
-                val left = budget - o.summary.spentCents
                 div("track") {
-                    div("fill ${o.status(o.summary.spentCents, budget)?.name?.lowercase().orEmpty()}") {
-                        style = "width:${pct(o.summary.spentCents, budget)}%"
+                    div("fill ${o.status(spent, budget)?.name?.lowercase().orEmpty()}") {
+                        style = "width:${pct(spent, budget)}%"
                     }
                     if (current) div("tick") { style = "left:${pct(o.today.dayOfMonth.toLong(), o.month.lengthOfMonth().toLong())}%" }
                 }
@@ -176,12 +181,12 @@ fun FlowContent.overview(o: Overview) {
                     val budget = o.budgetCents
                     when {
                         budget == null -> span("muted") { +"No budget set" }
-                        budget >= o.summary.spentCents -> {
-                            +"${Money.format(budget - o.summary.spentCents)} left"
+                        budget >= spent -> {
+                            +"${Money.format(budget - spent)} left"
                             span("muted") { +" of ${Money.format(budget)}" }
                         }
                         else -> {
-                            +"${Money.format(o.summary.spentCents - budget)} over"
+                            +"${Money.format(spent - budget)} over"
                             span("muted") { +" of ${Money.format(budget)}" }
                         }
                     }
@@ -236,8 +241,8 @@ fun FlowContent.overview(o: Overview) {
                 monoLabel("Where it went")
                 a(href = "/ledger?from=${o.month.atDay(1)}&to=${o.month.atEndOfMonth()}", classes = "link") { +"All" }
             }
-            if (o.summary.categories.isEmpty()) p("muted") { +"Nothing spent this month yet." }
-            o.summary.categories.forEach { total ->
+            if (o.everyday.categories.isEmpty()) p("muted") { +"Nothing spent this month yet." }
+            o.everyday.categories.forEach { total ->
                 val budget = o.budgetOf(total.categoryId)
                 val status = o.status(total.cents, budget)
                 val name = s.label(total.categoryId)
@@ -250,7 +255,7 @@ fun FlowContent.overview(o: Overview) {
                     }
                     div("track thin") {
                         div("fill ${status?.name?.lowercase().orEmpty()}") {
-                            style = "width:${pct(total.cents, budget ?: o.summary.spentCents.coerceAtLeast(1))}%"
+                            style = "width:${pct(total.cents, budget ?: o.everyday.spentCents.coerceAtLeast(1))}%"
                         }
                     }
                 }
@@ -325,7 +330,7 @@ private fun FlowContent.paceNote(o: Overview) {
     val day = if (o.month == YearMonth.from(o.today)) o.today.dayOfMonth else o.month.lengthOfMonth()
     val before = o.cumulativeLast.getOrNull(minOf(day, o.cumulativeLast.size) - 1) ?: return
     if (before <= 0) return
-    val change = (o.summary.spentCents - before) * 100 / before
+    val change = (o.summary.everydayCents - before) * 100 / before
     pill("${if (change > 0) "↑" else "↓"} ${change.absoluteValue}% vs ${o.month.minusMonths(1).format(shortMonth)}", if (change > 0) "warn" else "good")
 }
 

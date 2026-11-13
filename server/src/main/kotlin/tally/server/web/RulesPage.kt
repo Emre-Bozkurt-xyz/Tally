@@ -164,7 +164,9 @@ private fun FlowContent.ruleRow(s: Snapshot, f: RulesEdits.RuleForm, error: Stri
         input(InputType.hidden, name = "id") { value = f.id.orEmpty() }
         input(InputType.text, name = "pattern", classes = "mono") {
             value = f.pattern
-            placeholder = "Tim Hortons|Second Cup"
+            // Blank with an amount: bank alerts that name no merchant (rent leaving chequing).
+            placeholder = if (!isNew && f.pattern.isBlank()) "No merchant (bank alert)" else "Tim Hortons|Second Cup"
+            attributes["title"] = "Leave blank and set an amount to match bank alerts with no merchant"
             attributes["aria-label"] = "Merchant pattern"
         }
         input(InputType.text, name = "min", classes = "amount") { value = f.min; attributes["aria-label"] = "Minimum amount" }
@@ -251,13 +253,15 @@ private fun FlowContent.categoriesSection(s: Snapshot, error: String? = null) {
         error?.let { div("result error") { +it } }
         p("muted") {
             +"Two levels. Money in filed under the top-level category named Income counts as income; "
-            +"anywhere else it's money back for that spending. Deleting keeps the name on past transactions."
+            +"anywhere else it's money back for that spending. Deleting keeps the name on past transactions. "
+            +"Counts: part of the everyday number on the overview and the phone; switch off fixed costs like rent and bills "
+            +"(a category switched off takes its subcategories with it)."
         }
-        div("row-head category-grid") { span { +"Name" }; span { +"Under" }; span { +"Monthly budget" }; span { +"Pinned" }; span { } }
+        div("row-head category-grid") { span { +"Name" }; span { +"Under" }; span { +"Monthly budget" }; span { +"Pinned" }; span { +"Counts" }; span { } }
         val tree = s.categoryTree
         tree.forEach { c ->
             val siblings = tree.filter { it.parentId == c.parentId }
-            categoryRow(s, c.id, c.name, c.parentId, c.monthlyBudgetCents?.let(::plain).orEmpty(), c.pinned, null, siblings.first() == c, siblings.last() == c)
+            categoryRow(s, c.id, c.name, c.parentId, c.monthlyBudgetCents?.let(::plain).orEmpty(), c.pinned, c.counted, null, siblings.first() == c, siblings.last() == c)
         }
         p("muted add-label") { +"Add a category" }
         form(classes = "row category-grid") {
@@ -268,13 +272,14 @@ private fun FlowContent.categoriesSection(s: Snapshot, error: String? = null) {
             parentSelect(s, null, editing = null)
             span { }
             span { }
+            span { }
             div("row-actions") { button(classes = "primary") { +"Add" } }
         }
     }
 }
 
-fun categoryRowHtml(s: Snapshot, id: String, name: String, parentId: String?, budget: String, pinned: Boolean, error: String) =
-    createHTML().div { categoryRow(s, id, name, parentId, budget, pinned, error, first = true, last = true) }.let(::unwrap)
+fun categoryRowHtml(s: Snapshot, id: String, name: String, parentId: String?, budget: String, pinned: Boolean, counted: Boolean, error: String) =
+    createHTML().div { categoryRow(s, id, name, parentId, budget, pinned, counted, error, first = true, last = true) }.let(::unwrap)
 
 fun categoryAddErrorHtml(s: Snapshot, name: String, parentId: String?, error: String) = createHTML().form(classes = "row category-grid") {
     attributes["hx-post"] = "/rules/category/add"
@@ -284,12 +289,13 @@ fun categoryAddErrorHtml(s: Snapshot, name: String, parentId: String?, error: St
     parentSelect(s, parentId, editing = null)
     span { }
     span { }
+    span { }
     div("row-actions") { button(classes = "primary") { +"Add" } }
     div("row-error") { +error }
 }
 
 private fun FlowContent.categoryRow(
-    s: Snapshot, id: String, name: String, parentId: String?, budget: String, pinned: Boolean, error: String?, first: Boolean, last: Boolean,
+    s: Snapshot, id: String, name: String, parentId: String?, budget: String, pinned: Boolean, counted: Boolean, error: String?, first: Boolean, last: Boolean,
 ) {
     form(classes = "row category-grid${if (parentId != null) " child" else ""}") {
         attributes["hx-post"] = "/rules/category/$id/save"
@@ -301,6 +307,10 @@ private fun FlowContent.categoryRow(
         label("check") {
             input(InputType.checkBox, name = "pinned") { value = "true"; checked = pinned }
             span("sr") { +"Pinned" }
+        }
+        label("check") {
+            input(InputType.checkBox, name = "counted") { value = "true"; checked = counted }
+            span("sr") { +"Counts toward everyday" }
         }
         div("row-actions") {
             button(classes = "quiet") { +"Save" }
@@ -513,7 +523,7 @@ const val RULES_CSS = """
 .row-head span { font: 500 10px/1.3 "Geist Mono", monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
 .rule-grid { grid-template-columns: minmax(10rem, 2fr) 5rem 5rem minmax(6rem, 1fr) minmax(9rem, 1.4fr) minmax(6rem, 1fr) 3rem auto; }
 .alias-grid { grid-template-columns: minmax(12rem, 2fr) minmax(8rem, 1fr) auto; }
-.category-grid { grid-template-columns: minmax(8rem, 1.5fr) minmax(8rem, 1fr) 7rem 3.5rem auto; }
+.category-grid { grid-template-columns: minmax(8rem, 1.5fr) minmax(8rem, 1fr) 7rem 3.5rem 3.5rem auto; }
 .category-grid.child input[name=name] { margin-left:1.5rem; width:calc(100% - 1.5rem); }
 .row input, .row select { width:100%; }
 .row input.amount { text-align:right; }

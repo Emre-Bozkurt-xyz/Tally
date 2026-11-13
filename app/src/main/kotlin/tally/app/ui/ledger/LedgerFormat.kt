@@ -1,9 +1,11 @@
 package tally.app.ui.ledger
 
+import tally.app.data.CategoryEntity
 import tally.app.data.SplitEntity
 import tally.app.data.TransactionEntity
 import tally.core.model.Kind
 import tally.core.model.Source
+import tally.core.report.Counting
 import tally.core.report.LedgerEntry
 import tally.core.report.SplitPart
 import tally.core.report.withSplits
@@ -16,8 +18,18 @@ import java.time.format.DateTimeFormatter
 
 /** A transaction as reports count it, splits expanded (owed parts drop out of spending). */
 fun TransactionEntity.ledgerEntries(splits: List<SplitEntity>): List<LedgerEntry> =
-    LedgerEntry(amountCents, Kind.valueOf(kind), categoryId, occurredAtLocal().toLocalDate(), merchantId)
+    LedgerEntry(amountCents, Kind.valueOf(kind), categoryId, occurredAtLocal().toLocalDate(), merchantId, counted)
         .withSplits(splits.map { SplitPart(it.amountCents, it.categoryId, it.owedBy) })
+
+/** What counts toward the everyday number, from these categories' switches (deleted ones included). */
+fun List<CategoryEntity>.counting(): Counting {
+    val parents = associate { it.id to it.parentId }
+    return Counting(filter { !it.counted }.map { it.id }.toSet()) { parents[it] }
+}
+
+/** Whether [this] transaction counts toward the everyday number, before splits. */
+fun TransactionEntity.counts(counting: Counting): Boolean =
+    kind == Kind.EXPENSE.name && (counted ?: counting.categoryCounts(categoryId))
 
 /**
  * What to call a transaction with no merchant: what the bank said it was ("Withdrawal",

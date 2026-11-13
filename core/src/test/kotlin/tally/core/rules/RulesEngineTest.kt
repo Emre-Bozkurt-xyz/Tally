@@ -58,6 +58,35 @@ class RulesEngineTest {
     }
 
     @Test
+    fun `a rule with no merchant files bare bank alerts by amount, and only those`() {
+        val rules = RulesEngine(
+            listOf(
+                Rule("rent", 0, "", minAmountCents = 750_00, maxAmountCents = 750_00, accountId = "chequing", categoryId = "rent"),
+                Rule("presto", 1, "", minAmountCents = 20_00, maxAmountCents = 20_00, categoryId = "transit"),
+                Rule("any", 2, ".*", categoryId = "other"),
+            ),
+        )
+        assertEquals("rent", rules.match(null, 750_00, "chequing")?.id)
+        assertNull(rules.match(null, 750_00, "visa"))
+        assertEquals("presto", rules.match(" ", 20_00, null)?.id)
+        // A purchase with a merchant never meets a no-merchant rule, and a pattern never meets a bare alert.
+        assertEquals("any", rules.match("Shell", 750_00, "chequing")?.id)
+        assertNull(rules.match(null, 12_00, "chequing"))
+        // Money in isn't filed by amount.
+        assertNull(RulesEngine(listOf(Rule("small", 0, "", maxAmountCents = 50_00, categoryId = "c"))).match(null, -20_00, null))
+    }
+
+    @Test
+    fun `a rule with no merchant needs an amount`() {
+        assertEquals(Rule.NO_MERCHANT_NEEDS_AMOUNT, Rule.patternError("", forRule = true))
+        assertNull(Rule.patternError("", forRule = true, minAmountCents = 750_00))
+        assertNull(Rule.patternError(" ", forRule = true, maxAmountCents = 20_00))
+        assertNotNull(Rule.patternError("", minAmountCents = 750_00)) // Aliases always need a pattern.
+        // One in a hand-edited database is skipped rather than catching everything.
+        assertNull(RulesEngine(listOf(Rule("all", 0, "", categoryId = "c"))).match(null, 5_00, null))
+    }
+
+    @Test
     fun `spellings of one merchant share a key`() {
         assertEquals(Rule.merchantKey("Foodie Fruitie"), Rule.merchantKey("FOODIE-FRUITIE"))
         assertEquals(Rule.merchantKey("Foodie Fruitie"), Rule.merchantKey("foodie  fruitie"))

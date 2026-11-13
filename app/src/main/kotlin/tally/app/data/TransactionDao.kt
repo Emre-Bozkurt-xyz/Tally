@@ -55,6 +55,17 @@ interface TransactionDao {
     )
     suspend fun categorizeMerchant(merchantId: String, categoryId: String, maxAmountCents: Long, now: Long): Int
 
+    /** Gives past bank alerts without a merchant, of exactly [amountCents] (on [accountId], if given), a category from a new rule. */
+    @Query(
+        """
+        UPDATE transactions
+        SET categoryId = :categoryId, categorySource = 'RULE', status = 'CONFIRMED', updatedAt = :now
+        WHERE merchantId IS NULL AND NOT deleted AND kind = 'EXPENSE' AND amountCents = :amountCents
+            AND (:accountId IS NULL OR accountId = :accountId)
+        """,
+    )
+    suspend fun categorizeBare(amountCents: Long, accountId: String?, categoryId: String, now: Long): Int
+
     /** Captured transactions' raw merchant strings, for re-applying aliases. */
     @Query("SELECT id, merchantRaw, merchantId FROM transactions WHERE merchantRaw IS NOT NULL")
     suspend fun merchantRefs(): List<MerchantRef>

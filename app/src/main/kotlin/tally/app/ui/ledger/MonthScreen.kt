@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tally.app.data.CategoryEntity
 import tally.app.data.LedgerRepository
 import tally.app.ui.components.AmountText
 import tally.app.ui.components.CircleIconButton
@@ -51,7 +53,11 @@ import java.time.format.DateTimeFormatter
 
 private val MONTH_FORMAT = DateTimeFormatter.ofPattern("MMMM yyyy")
 
-/** One month's spending: total, then per top-level category with subcategories below. */
+/**
+ * One month's spending: total, then per top-level category with subcategories below.
+ * Everything shows here; categories that don't count toward the everyday number (rent,
+ * bills) are grouped under "Fixed".
+ */
 @Composable
 fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
     var monthText by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
@@ -64,11 +70,13 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val byId = remember(categories) { categories.associateBy { it.id } }
     val splits by remember { ledger.observeAllSplits() }.collectAsStateWithLifecycle(initialValue = emptyList())
-    val summary = remember(transactions, splits, byId, month) {
+    val counting = remember(categories) { categories.counting() }
+    val summary = remember(transactions, splits, byId, month, counting) {
         val splitsByTransaction = splits.groupBy { it.transactionId }
         val entries = transactions.flatMap { it.ledgerEntries(splitsByTransaction[it.id].orEmpty()) }
-        MonthSummary.of(month, entries) { id -> byId[id]?.parentId }
+        MonthSummary.of(month, entries, counting) { id -> byId[id]?.parentId }
     }
+    val (everydayTotals, fixedTotals) = remember(summary, counting) { summary.categories.partition { counting.categoryCounts(it.categoryId) } }
     val totalBudget = remember(categories) {
         Budgets.monthlyTotal(categories.filter { !it.deleted }.map { BudgetedCategory(it.id, it.parentId, it.monthlyBudgetCents) })
     }
@@ -119,8 +127,16 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
                             track = colors.heroTrack,
                         )
                     }
-                    if (summary.incomeCents != 0L) {
+                    if (summary.fixedCents != 0L) {
                         Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Everyday ${Money.format(summary.everydayCents)} · Fixed ${Money.format(summary.fixedCents)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onHeroMuted,
+                        )
+                    }
+                    if (summary.incomeCents != 0L) {
+                        Spacer(Modifier.height(if (summary.fixedCents != 0L) 2.dp else 12.dp))
                         Text("Income ${Money.format(summary.incomeCents)}", style = MaterialTheme.typography.bodyMedium, color = colors.onHeroMuted)
                     }
                 }
@@ -134,30 +150,42 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
                         modifier = Modifier.padding(ScreenPadding),
                     )
                 }
-            } else {
-                item { SectionHeader("By category") }
             }
-            summary.categories.forEach { total ->
-                val rows = listOf(total) + total.children
-                rows.forEachIndexed { index, row ->
-                    item(key = "${if (index == 0) "top" else "child"}:${row.categoryId}:${total.categoryId}") {
-                        Column(Modifier.padding(horizontal = ScreenPadding)) {
-                            CategoryRow(
-                                name = nameOf(row),
-                                colorKey = total.categoryId,
-                                cents = row.cents,
-                                ofCents = summary.spentCents,
-                                budgetCents = row.categoryId?.let { byId[it]?.monthlyBudgetCents },
-                                child = index > 0,
-                                modifier = Modifier.clip(groupShape(index, rows.size)),
-                            )
-                            if (index < rows.lastIndex) RowDivider(start = 64.dp)
-                        }
-                    }
-                }
-                item(key = "gap:${total.categoryId}") { Spacer(Modifier.height(10.dp)) }
+            for ((group, totals) in listOf((if (fixedTotals.isEmpty()) "By category" else "Everyday") to everydayTotals, "Fixed" to fixedTotals)) {
+                if (totals.isEmpty()) continue
+                item(key = "group:$group") { SectionHeader(group) }
+                categoryRows(totals, summary.spentCents, byId, ::nameOf)
             }
         }
+    }
+}
+
+/** A top-level category's row with its subcategories under it, then a gap. */
+private fun LazyListScope.categoryRows(
+    totals: List<CategoryTotal>,
+    spentCents: Long,
+    byId: Map<String, CategoryEntity>,
+    nameOf: (CategoryTotal) -> String,
+) {
+    totals.forEach { total ->
+        val rows = listOf(total) + total.children
+        rows.forEachIndexed { index, row ->
+            item(key = "${if (index == 0) "top" else "child"}:${row.categoryId}:${total.categoryId}") {
+                Column(Modifier.padding(horizontal = ScreenPadding)) {
+                    CategoryRow(
+                        name = nameOf(row),
+                        colorKey = total.categoryId,
+                        cents = row.cents,
+                        ofCents = spentCents,
+                        budgetCents = row.categoryId?.let { byId[it]?.monthlyBudgetCents },
+                        child = index > 0,
+                        modifier = Modifier.clip(groupShape(index, rows.size)),
+                    )
+                    if (index < rows.lastIndex) RowDivider(start = 64.dp)
+                }
+            }
+        }
+        item(key = "gap:${total.categoryId}") { Spacer(Modifier.height(10.dp)) }
     }
 }
 

@@ -13,6 +13,8 @@ data class LedgerEntry(
     val date: LocalDate,
     /** For per-merchant reports (top merchants, subscriptions). */
     val merchantId: String? = null,
+    /** The transaction's own say on whether it counts toward the everyday number; null follows its category ([Counting]). */
+    val counted: Boolean? = null,
 )
 
 /**
@@ -31,14 +33,24 @@ data class MonthSummary(
     val month: YearMonth,
     /** Net expenses: purchases minus refunds. Transfers never count. */
     val spentCents: Long,
+    /** The part of [spentCents] that counts toward the everyday number ([Counting]). */
+    val everydayCents: Long,
     /** Money in from INCOME transactions, as a positive number. */
     val incomeCents: Long,
     /** Top-level categories, largest first. */
     val categories: List<CategoryTotal>,
 ) {
+    /** Spending that doesn't count toward the everyday number: rent, bills, one-offs you switched off. */
+    val fixedCents: Long get() = spentCents - everydayCents
+
     companion object {
         /** [parentOf] maps a category id to its parent's id, or null for a top-level category. */
-        fun of(month: YearMonth, entries: List<LedgerEntry>, parentOf: (String) -> String?): MonthSummary {
+        fun of(
+            month: YearMonth,
+            entries: List<LedgerEntry>,
+            counting: Counting = Counting.ALL,
+            parentOf: (String) -> String?,
+        ): MonthSummary {
             val inMonth = entries.filter { YearMonth.from(it.date) == month }
             val expenses = inMonth.filter { it.kind == Kind.EXPENSE }
             val byTopLevel = expenses.groupBy { entry -> entry.categoryId?.let { parentOf(it) ?: it } }
@@ -52,6 +64,7 @@ data class MonthSummary(
             return MonthSummary(
                 month = month,
                 spentCents = expenses.sumOf { it.amountCents },
+                everydayCents = expenses.filter { counting.counts(it) }.sumOf { it.amountCents },
                 incomeCents = -inMonth.filter { it.kind == Kind.INCOME }.sumOf { it.amountCents },
                 categories = categories,
             )

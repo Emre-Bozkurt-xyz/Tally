@@ -54,9 +54,9 @@ class RulesEdits(private val sync: SyncServer, private val clock: Clock = Clock.
     fun saveRule(form: RuleForm, source: String): String? {
         val s = snapshot()
         val pattern = form.pattern.trim()
-        Rule.patternError(pattern)?.let { return it }
         val min = amount(form.min) { return it }
         val max = amount(form.max) { return it }
+        Rule.patternError(pattern, forRule = true, min, max)?.let { return it }
         if (min != null && max != null && min > max) return "The minimum is above the maximum"
         if (s.categoryTree.none { it.id == form.categoryId }) return "Pick a category"
         if (form.accountId != null && s.accounts.none { it.id == form.accountId }) return "That account no longer exists"
@@ -100,6 +100,7 @@ class RulesEdits(private val sync: SyncServer, private val clock: Clock = Clock.
     fun matches(s: Snapshot, rule: RuleRow): Int {
         val engine = RulesEngine(listOf(rule.toRule()))
         return s.transactions.count { t ->
+            if (t.kind == "TRANSFER") return@count false
             val merchant = t.merchantId?.let { s.merchantsById[it]?.name }
             engine.match(merchant, t.amountCents, t.accountId) != null
         }
@@ -194,8 +195,8 @@ class RulesEdits(private val sync: SyncServer, private val clock: Clock = Clock.
         return null
     }
 
-    /** Renames, moves (to another parent, last there), and sets the budget and pinned flag. */
-    fun updateCategory(id: String, name: String, parentId: String?, budget: String, pinned: Boolean, source: String): String? {
+    /** Renames, moves (to another parent, last there), and sets the budget, pinned and counts flags. */
+    fun updateCategory(id: String, name: String, parentId: String?, budget: String, pinned: Boolean, counted: Boolean, source: String): String? {
         val s = snapshot()
         val current = s.categoryTree.find { it.id == id } ?: return "That category no longer exists"
         val trimmed = name.trim()
@@ -207,7 +208,7 @@ class RulesEdits(private val sync: SyncServer, private val clock: Clock = Clock.
         } else {
             current.sortOrder
         }
-        val row = current.copy(name = trimmed, parentId = parentId, sortOrder = sortOrder, monthlyBudgetCents = cents, pinned = pinned)
+        val row = current.copy(name = trimmed, parentId = parentId, sortOrder = sortOrder, monthlyBudgetCents = cents, pinned = pinned, counted = counted)
         if (row == current) return null
         sync.write(listOf(Rows.categories.encode(row.copy(updatedAt = clock.millis()), s.stored(Rows.categories.table, id))), source)
         return null
