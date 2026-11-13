@@ -167,16 +167,16 @@ class DashboardTest {
     fun `money in that matches an owed part is settled from the inbox`() = app {
         sync.write(
             listOf(
-                Rows.splits.encode(SplitRow("s1", "t-coffee", 2_00, null, "Danya", 1), null),
-                Rows.merchants.encode(MerchantRow("m-danya", "Danya Ijaz", null, 0, 0), null),
+                Rows.splits.encode(SplitRow("s1", "t-coffee", 2_00, null, "Priya", 1), null),
+                Rows.merchants.encode(MerchantRow("m-priya", "Priya Shah", null, 0, 0), null),
                 Rows.transactions.encode(
-                    coffee1.copy(id = "t-in", amountCents = -2_00, merchantId = "m-danya", merchantRaw = "DANYA IJAZ", categoryId = null,
+                    coffee1.copy(id = "t-in", amountCents = -2_00, merchantId = "m-priya", merchantRaw = "PRIYA SHAH", categoryId = null,
                         status = TransactionStatus.CAPTURED.name, categorySource = null, kind = "INCOME"),
                     null,
                 ),
             ),
         )
-        assertTrue("Settles Danya" in client.get("/inbox").bodyAsText())
+        assertTrue("Settles Priya" in client.get("/inbox").bodyAsText())
         assertTrue("Settled." in edit("/inbox/t-in/settle/s1").bodyAsText())
         val s = edits.snapshot()
         assertEquals(TransactionStatus.CONFIRMED.name to "TRANSFER", s.transactions.single { it.id == "t-in" }.let { it.status to it.kind })

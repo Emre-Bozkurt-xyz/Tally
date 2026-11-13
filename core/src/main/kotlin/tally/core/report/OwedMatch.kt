@@ -5,7 +5,7 @@ data class OwedPart(val splitId: String, val owedBy: String, val amountCents: Lo
 
 /**
  * Money from a person that pays back what they owe: the open part with exactly that amount
- * whose name agrees with the sender's ("Danya" or "Danya Ijaz" for "DANYA IJAZ"). Oldest first
+ * whose name agrees with the sender's ("Priya" or "Priya Shah" for "PRIYA SHAH"). Oldest first
  * when there are several.
  */
 object OwedMatch {

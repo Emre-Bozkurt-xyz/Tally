@@ -11,7 +11,7 @@ class RuleReplayTest {
     private val rules = RulesEngine(
         listOf(
             Rule("r-dd", 0, "DoorDash", categoryId = "delivery"),
-            Rule("r-danya", 1, "Danya Ijaz", categoryId = "dining", ask = true),
+            Rule("r-priya", 1, "Priya Shah", categoryId = "dining", ask = true),
         ),
     )
 
@@ -41,10 +41,10 @@ class RuleReplayTest {
     @Test
     fun `ask rules only suggest, and only once`() {
         assertEquals(
-            listOf(ReplayChange("t", "dining", confirm = false, ruleId = "r-danya")),
-            RuleReplay.plan(listOf(c("t", "Danya Ijaz")), rules),
+            listOf(ReplayChange("t", "dining", confirm = false, ruleId = "r-priya")),
+            RuleReplay.plan(listOf(c("t", "Priya Shah")), rules),
         )
-        assertEquals(emptyList<ReplayChange>(), RuleReplay.plan(listOf(c("t", "Danya Ijaz", categoryId = "dining")), rules))
+        assertEquals(emptyList<ReplayChange>(), RuleReplay.plan(listOf(c("t", "Priya Shah", categoryId = "dining")), rules))
     }
 
     @Test

@@ -14,7 +14,7 @@ import tally.core.report.OwedPart
 class PeopleRulesTest {
     private val rules = RulesEngine(
         listOf(
-            Rule("r1", 0, "Danya Ijaz", categoryId = "groceries", ask = true),
+            Rule("r1", 0, "Priya Shah", categoryId = "groceries", ask = true),
             Rule("r2", 1, "Canada", categoryId = "income-gov"),
         ),
     )
@@ -22,8 +22,8 @@ class PeopleRulesTest {
 
     @Test
     fun `an ask rule suggests, a plain rule files`() {
-        val danya = categorizer.categorize("Danya Ijaz", -31_00, null, null)
-        assertEquals(Suggestion("groceries", CategorySource.RULE, Confidence.MEDIUM), danya)
+        val priya = categorizer.categorize("Priya Shah", -31_00, null, null)
+        assertEquals(Suggestion("groceries", CategorySource.RULE, Confidence.MEDIUM), priya)
         assertEquals(Confidence.HIGH, categorizer.categorize("Canada", -78_75, null, null).confidence)
     }
 
@@ -40,7 +40,7 @@ class PeopleRulesTest {
             categories = listOf(CategorySpec("Food", listOf("Groceries")), CategorySpec("Income", listOf("Government"))),
             aliases = emptyList(),
             rules = listOf(
-                RuleSpec("Danya Ijaz", "Food/Groceries", ask = true),
+                RuleSpec("Priya Shah", "Food/Groceries", ask = true),
                 RuleSpec("Canada", "Income/Government"),
             ),
         )
@@ -64,13 +64,13 @@ class PeopleRulesTest {
     fun `a payment from a person settles the open part with that amount and name`() {
         val open = listOf(
             OwedPart("s1", "Sam", 12_00),
-            OwedPart("s2", "Danya", 31_00),
-            OwedPart("s3", "Danya", 31_00),
+            OwedPart("s2", "Priya", 31_00),
+            OwedPart("s3", "Priya", 31_00),
         )
-        assertEquals("s2", OwedMatch.find("DANYA IJAZ", 31_00, open)?.splitId)
+        assertEquals("s2", OwedMatch.find("PRIYA SHAH", 31_00, open)?.splitId)
         assertEquals("s1", OwedMatch.find("Sam Smith", 12_00, open)?.splitId)
-        assertNull(OwedMatch.find("Danya Ijaz", 30_00, open))
-        assertNull(OwedMatch.find("Raiena Haque", 12_00, open))
+        assertNull(OwedMatch.find("Priya Shah", 30_00, open))
+        assertNull(OwedMatch.find("Alex Kim", 12_00, open))
         assertNull(OwedMatch.find(null, 12_00, open))
     }
 }

@@ -193,22 +193,22 @@ class LedgerRepositoryTest {
 
         val refund = ledger.saveQuickEntry(moneyIn(78_75, "Canada"), -78_75, government, null, note = null)
         assertEquals(Kind.INCOME.name, refund.kind)
-        val payback = ledger.saveQuickEntry(moneyIn(31_00, "Danya Ijaz"), -31_00, groceries, null, note = null)
+        val payback = ledger.saveQuickEntry(moneyIn(31_00, "Priya Shah"), -31_00, groceries, null, note = null)
         assertEquals(Kind.EXPENSE.name, payback.kind)
     }
 
     @Test
     fun `a payment that settles an owed part is a transfer`() = runTest {
         val dinner = ledger.saveQuickEntry(null, 62_00, groceries, cash, note = null)
-        ledger.addSplit(dinner.id, 31_00, null, owedBy = "Danya")
+        ledger.addSplit(dinner.id, 31_00, null, owedBy = "Priya")
         val part = ledger.openOwedParts().single()
-        assertEquals("Danya" to 31_00L, part.owedBy to part.amountCents)
+        assertEquals("Priya" to 31_00L, part.owedBy to part.amountCents)
 
-        val payment = moneyIn(31_00, "Danya Ijaz")
+        val payment = moneyIn(31_00, "Priya Shah")
         assertTrue(ledger.settleOwedWith(payment.id, part.splitId))
         val settled = ledger.getTransaction(payment.id)!!
         assertEquals(Kind.TRANSFER.name to TransactionStatus.CONFIRMED.name, settled.kind to settled.status)
-        assertEquals("Danya paid back", settled.note)
+        assertEquals("Priya paid back", settled.note)
         assertTrue(ledger.openOwedParts().isEmpty())
         assertFalse(ledger.settleOwedWith(payment.id, part.splitId))
     }

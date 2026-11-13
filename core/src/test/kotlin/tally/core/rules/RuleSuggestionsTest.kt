@@ -44,7 +44,7 @@ class RuleSuggestionsTest {
                 SuggestedRule("Presto", "Transport/Transit"),
                 SuggestedRule("Uber", "Transport/Rideshare"),
                 SuggestedRule("Amazon", "Shopping/Online"),
-                SuggestedRule("Danya Ijaz", "Food/Coffee", ask = true),
+                SuggestedRule("Priya Shah", "Food/Coffee", ask = true),
             ),
         )
         val checked = RuleSuggestionRules.check(raw, history, categories, existingAliases = emptyList()) { name ->

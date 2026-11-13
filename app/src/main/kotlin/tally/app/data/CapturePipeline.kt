@@ -199,7 +199,7 @@ class CapturePipeline(
     private fun TransactionEntity.categorized(
         merchant: MerchantEntity?,
         categorizer: Categorizer,
-        // Money to or from a person: memory only suggests (what Danya sends varies), as for statements.
+        // Money to or from a person: memory only suggests (what Priya sends varies), as for statements.
         person: Boolean = false,
     ): Pair<TransactionEntity, List<String>> {
         val suggestion = categorizer.categorize(

@@ -121,7 +121,7 @@ class StatementImportTest {
         val sam = MerchantRow("m-sam", "Sam Smith", "coffee", 9, 0) // Trusted memory, but a person.
         sync.write(
             incomeCats.map { Rows.categories.encode(it, null) } + Rows.merchants.encode(sam, null) + listOf(
-                Rows.rules.encode(RuleRow("r1", 0, "Danya Ijaz", null, null, null, "coffee", null, 0, ask = true), null),
+                Rows.rules.encode(RuleRow("r1", 0, "Priya Shah", null, null, null, "coffee", null, 0, ask = true), null),
                 Rows.rules.encode(RuleRow("r2", 1, "Canada", null, null, null, "gov", null, 0), null),
             ),
         )
@@ -132,9 +132,9 @@ class StatementImportTest {
             statement.copy(
                 kind = StatementKind.CHEQUING,
                 lines = listOf(
-                    person(14, "DANYA IJAZ", -31_00),
+                    person(14, "PRIYA SHAH", -31_00),
                     person(15, "SAM SMITH", -12_00),
-                    person(16, "RAIENA HAQUE", -20_00),
+                    person(16, "ALEX KIM", -20_00),
                     StatementLine(LocalDate.of(2026, 9, 10), "Prov/Local Gvt Payment CANADA", "CANADA", -78_75, Kind.INCOME),
                 ),
             ),
@@ -142,14 +142,14 @@ class StatementImportTest {
         )
         fun added(name: String) = plan.added.single { (it.merchant?.name ?: snapshot().merchantsById[it.transaction.merchantId]?.name) == name }.transaction
 
-        val danya = added("Danya Ijaz")
+        val priya = added("Priya Shah")
         assertEquals(listOf("coffee", CategorySource.RULE.name, TransactionStatus.CAPTURED.name, Kind.EXPENSE.name),
-            listOf(danya.categoryId, danya.categorySource, danya.status, danya.kind))
+            listOf(priya.categoryId, priya.categorySource, priya.status, priya.kind))
         val samT = added("Sam Smith")
         assertEquals(listOf("coffee", CategorySource.MEMORY.name, TransactionStatus.CAPTURED.name),
             listOf(samT.categoryId, samT.categorySource, samT.status))
-        val raiena = added("Raiena Haque")
-        assertEquals(listOf(null, TransactionStatus.CAPTURED.name, Kind.INCOME.name), listOf(raiena.categoryId, raiena.status, raiena.kind))
+        val alex = added("Alex Kim")
+        assertEquals(listOf(null, TransactionStatus.CAPTURED.name, Kind.INCOME.name), listOf(alex.categoryId, alex.status, alex.kind))
         val canada = added("Canada")
         assertEquals(listOf("gov", TransactionStatus.CONFIRMED.name, Kind.INCOME.name), listOf(canada.categoryId, canada.status, canada.kind))
     }
