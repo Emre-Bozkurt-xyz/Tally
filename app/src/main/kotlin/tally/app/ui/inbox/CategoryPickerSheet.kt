@@ -30,6 +30,7 @@ import tally.app.ui.components.AmountText
 import tally.app.ui.components.LetterAvatar
 import tally.app.ui.components.MonoLabel
 import tally.app.ui.components.PillChip
+import tally.app.ui.theme.TallyIcons
 import tally.app.ui.components.SwitchRow
 import tally.app.ui.theme.Tally
 import tally.core.model.Kind
@@ -54,6 +55,8 @@ fun CategoryPickerSheet(
     accountName: String? = null,
     onPick: (CategoryChoice) -> Unit,
     onDismiss: () -> Unit,
+    /** "Transfer between my accounts": shown when given and it isn't one already. */
+    onTransfer: (() -> Unit)? = null,
 ) {
     var always by remember { mutableStateOf(false) }
     // Prefilled with the amount rounded up to the next dollar, as a sensible cap.
@@ -99,6 +102,14 @@ fun CategoryPickerSheet(
                         },
                     )
                 }
+            }
+            if (onTransfer != null && transaction.kind != Kind.TRANSFER.name) {
+                PillChip(
+                    text = "Transfer between my accounts",
+                    selected = false,
+                    onClick = onTransfer,
+                    leading = TallyIcons.Split,
+                )
             }
             if (merchantName == null && transaction.amountCents > 0 && transaction.kind == Kind.EXPENSE.name) {
                 Column {

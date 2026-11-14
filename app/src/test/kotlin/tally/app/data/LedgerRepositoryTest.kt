@@ -249,4 +249,16 @@ class LedgerRepositoryTest {
         // Dinner (31.00 yours, 31.00 owed), the payment a transfer, and the 1.00 you let go of.
         assertEquals(32_00L, entries.filter { it.kind == Kind.EXPENSE && it.categoryId == groceries }.sumOf { it.amountCents })
     }
+
+    @Test
+    fun `a withdrawal marked as a transfer stops counting, and picking a category makes it spending again`() = runTest {
+        val payment = ledger.saveQuickEntry(null, 902_86, groceries, cash, note = null)
+        ledger.markTransfer(payment.id)
+        val transfer = ledger.getTransaction(payment.id)!!
+        assertEquals(Kind.TRANSFER.name to null, transfer.kind to transfer.categoryId)
+        assertEquals(TransactionStatus.CONFIRMED.name, transfer.status)
+
+        ledger.saveQuickEntry(transfer, transfer.amountCents, groceries, cash, note = null)
+        assertEquals(Kind.EXPENSE.name, ledger.getTransaction(payment.id)!!.kind)
+    }
 }

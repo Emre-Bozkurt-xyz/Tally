@@ -225,6 +225,26 @@ class LedgerRepository(
 
     suspend fun getTransaction(id: String): TransactionEntity? = transactions.getById(id)
 
+    /** Puts a transaction back as it was (undo), as a new edit so it syncs. */
+    suspend fun restore(previous: TransactionEntity) = transactions.upsert(previous.copy(updatedAt = clock.millis()))
+
+    /**
+     * Money moving between your own accounts (a credit card payment RBC sent no card alert for):
+     * not spending, not income. Picking a category later makes it spending again.
+     */
+    suspend fun markTransfer(id: String) {
+        val transaction = transactions.getById(id) ?: return
+        transactions.upsert(
+            transaction.copy(
+                kind = Kind.TRANSFER.name,
+                categoryId = null,
+                categorySource = null,
+                status = TransactionStatus.CONFIRMED.name,
+                updatedAt = clock.millis(),
+            ),
+        )
+    }
+
     /** A capture as its notification shows it: names looked up. */
     suspend fun captured(id: String): CapturePipeline.Outcome.Captured? = db.captured(id)
 
@@ -271,8 +291,12 @@ class LedgerRepository(
     ): TransactionEntity {
         val now = clock.millis()
         val manual = existing == null || existing.source == Source.MANUAL.name
-        // Money in: income under "Income", otherwise money back for that spending.
-        val kind = existing?.let { CategoryKinds.kindFor(Kind.valueOf(it.kind), amountCents, db.categoryDao().getActive().isIncome(categoryId)) }
+        // Money in: income under "Income", otherwise money back for that spending. Choosing a
+        // category for a transfer says it wasn't one.
+        val kind = existing?.let {
+            val current = Kind.valueOf(it.kind).let { k -> if (k == Kind.TRANSFER) Kind.EXPENSE else k }
+            CategoryKinds.kindFor(current, amountCents, db.categoryDao().getActive().isIncome(categoryId))
+        }
         val typed = merchantName?.trim()?.takeIf { manual }
         val merchant = typed?.takeIf { it.isNotEmpty() }?.let { merchantFor(it, now) }
         val transaction = existing?.copy(

@@ -164,6 +164,15 @@ class DashboardTest {
     }
 
     @Test
+    fun `a capture can be marked as a transfer from the inbox, and a category undoes it`() = app {
+        assertTrue("Transfer between my accounts" in client.get("/inbox").bodyAsText())
+        assertTrue("Marked as a transfer." in edit("/inbox/t-fruitie/category", "categoryId" to WebEdits.TRANSFER).bodyAsText())
+        assertEquals("TRANSFER" to null, stored("t-fruitie").let { it.kind to it.categoryId })
+        edit("/ledger/t-fruitie/category", "categoryId" to "groceries")
+        assertEquals("EXPENSE" to "groceries", stored("t-fruitie").let { it.kind to it.categoryId })
+    }
+
+    @Test
     fun `money in from someone who owes you settles their balance from the inbox`() = app {
         sync.write(
             listOf(

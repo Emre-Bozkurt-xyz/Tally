@@ -339,6 +339,13 @@ fun TransactionScreen(
                 categories = chips,
                 accountName = accounts.find { it.id == t.accountId }?.name,
                 onDismiss = { picking = false },
+                onTransfer = {
+                    picking = false
+                    scope.launch {
+                        ledger.markTransfer(id)
+                        CaptureNotifier.cancel(context, id)
+                    }
+                },
                 onPick = { choice ->
                     picking = false
                     scope.launch {

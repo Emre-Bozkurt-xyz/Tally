@@ -24,12 +24,16 @@ import java.util.UUID
 class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.systemUTC()) {
     companion object {
         const val WEB = "web"
+
+        /** The category picker's "Transfer between my accounts" choice. */
+        const val TRANSFER = "__transfer"
     }
 
     fun snapshot() = Snapshot.load(sync)
 
     /** You picked a category (ledger or inbox): confirmed, manual, and merchant memory learns. */
     fun setCategory(transactionId: String, categoryId: String, source: String = WEB): Boolean {
+        if (categoryId == TRANSFER) return markTransfer(transactionId, source)
         val s = snapshot()
         val t = s.transactions.find { it.id == transactionId } ?: return false
         if (s.categoryTree.none { it.id == categoryId }) return false
@@ -41,7 +45,12 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
                     categorySource = CategorySource.MANUAL.name,
                     status = TransactionStatus.CONFIRMED.name,
                     // Money in: income under "Income", otherwise money back for that spending.
-                    kind = CategoryKinds.kindFor(Kind.valueOf(t.kind), t.amountCents, s.isIncomeCategory(categoryId)).name,
+                    // Choosing a category for a transfer says it wasn't one.
+                    kind = CategoryKinds.kindFor(
+                        Kind.valueOf(t.kind).let { if (it == Kind.TRANSFER) Kind.EXPENSE else it },
+                        t.amountCents,
+                        s.isIncomeCategory(categoryId),
+                    ).name,
                     updatedAt = now,
                 ),
                 s.stored(Rows.transactions.table, t.id),
@@ -52,6 +61,21 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
             learn(s, t.merchantId, categoryId, now)?.let { writes += it }
         }
         sync.write(writes, source)
+        return true
+    }
+
+    /** Money between your own accounts (a card payment): not spending, not income. */
+    fun markTransfer(transactionId: String, source: String = WEB): Boolean {
+        val s = snapshot()
+        val t = s.transactions.find { it.id == transactionId } ?: return false
+        val updated = t.copy(
+            kind = Kind.TRANSFER.name,
+            categoryId = null,
+            categorySource = null,
+            status = TransactionStatus.CONFIRMED.name,
+            updatedAt = clock.millis(),
+        )
+        sync.write(listOf(Rows.transactions.encode(updated, s.stored(Rows.transactions.table, t.id))), source)
         return true
     }
 

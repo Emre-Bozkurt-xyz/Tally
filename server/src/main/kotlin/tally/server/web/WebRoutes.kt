@@ -114,7 +114,15 @@ fun Route.dashboard(edits: WebEdits, rules: RulesEdits, suggester: RuleSuggester
         val categoryId = receiveParameters()["categoryId"].orEmpty()
         val done = withContext(Dispatchers.IO) { edits.setCategory(id, categoryId, source()) }
         val s = snapshot()
-        html(inboxDoneHtml(if (done) "Filed under ${s.label(categoryId)}." else "Already handled."))
+        html(
+            inboxDoneHtml(
+                when {
+                    !done -> "Already handled."
+                    categoryId == WebEdits.TRANSFER -> "Marked as a transfer."
+                    else -> "Filed under ${s.label(categoryId)}."
+                },
+            ),
+        )
     }
 
     edit("/inbox/{id}/settle") { id ->

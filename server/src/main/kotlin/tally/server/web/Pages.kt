@@ -457,6 +457,9 @@ private fun FlowContent.categorySelect(s: Snapshot, t: TransactionRow, post: Str
                 +(if (c.parentId == null) c.name else "${s.categoriesById[c.parentId]?.name} › ${c.name}")
             }
         }
+        if (t.kind != Kind.TRANSFER.name) {
+            option { value = WebEdits.TRANSFER; +"Transfer between my accounts" }
+        }
     }
 }
 

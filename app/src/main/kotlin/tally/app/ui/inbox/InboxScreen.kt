@@ -331,6 +331,15 @@ fun InboxScreen(
             categories = chips,
             accountName = transaction.accountId?.let { accountNames[it] },
             onDismiss = { picking = null },
+            onTransfer = {
+                picking = null
+                scope.launch {
+                    ledger.markTransfer(transaction.id)
+                    CaptureNotifier.cancel(context, transaction.id)
+                    val result = snackbar.showSnackbar("Marked as a transfer", actionLabel = "Undo", duration = SnackbarDuration.Short)
+                    if (result == SnackbarResult.ActionPerformed) ledger.restore(transaction)
+                }
+            },
             onPick = { choice ->
                 picking = null
                 scope.launch {
