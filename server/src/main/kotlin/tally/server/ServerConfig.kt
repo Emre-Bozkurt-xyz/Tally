@@ -13,6 +13,8 @@ data class ServerConfig(
     val access: AccessConfig?,
     /** Null without ANTHROPIC_API_KEY: `/api/categorize` then answers 503 and the phone carries on without. */
     val llm: LlmConfig? = null,
+    /** Null without GMAIL_ADDRESS and GMAIL_APP_PASSWORD: no receipts by email. */
+    val email: EmailConfig? = null,
 ) {
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()): ServerConfig {
@@ -41,6 +43,16 @@ data class ServerConfig(
                         rulesModel = env["ANTHROPIC_RULES_MODEL"]?.takeIf { it.isNotBlank() } ?: LlmConfig.DEFAULT_RULES_MODEL,
                     )
                 },
+                email = env["GMAIL_ADDRESS"]?.takeIf { it.isNotBlank() }?.let { address ->
+                    EmailConfig(
+                        address = address.trim(),
+                        // Google shows app passwords in groups of four; spaces or not, it's the same password.
+                        appPassword = required("GMAIL_APP_PASSWORD").filterNot(Char::isWhitespace),
+                        pollMinutes = env["EMAIL_POLL_MINUTES"]?.toLong() ?: 5,
+                        dailyLimit = env["EMAIL_DAILY_LIMIT"]?.toInt() ?: 100,
+                        folder = env["EMAIL_FOLDER"]?.takeIf { it.isNotBlank() } ?: "INBOX",
+                    )
+                },
             )
         }
     }
@@ -60,6 +72,18 @@ data class LlmConfig(
         const val DEFAULT_MODEL = "claude-haiku-5-5"
         const val DEFAULT_RULES_MODEL = "claude-sonnet-5-5"
     }
+}
+
+/** Gmail over IMAP with an app password, for receipts by email. */
+data class EmailConfig(
+    val address: String,
+    val appPassword: String,
+    val pollMinutes: Long = 5,
+    /** Receipts a day the model reads, at most. */
+    val dailyLimit: Int = 100,
+    val folder: String = "INBOX",
+) {
+    override fun toString() = "EmailConfig(address=$address, pollMinutes=$pollMinutes, dailyLimit=$dailyLimit, folder=$folder)"
 }
 
 /**

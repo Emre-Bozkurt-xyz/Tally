@@ -44,7 +44,7 @@ setup from you (email) comes last, giving you time to make the app password.
 | 1 | One database migration (v8) for steps 2 and 3, synced everywhere | Nothing | **Done** |
 | 2 | Rules without a merchant (rent) and "What counts" | Nothing | **Done** |
 | 3 | Quick splits, balances per person, settling e-Transfers | Nothing | **Done** |
-| 4 | Receipts from email on the server | App password in `.env.production` | To do |
+| 4 | Receipts from email on the server | App password in `.env.production` | **Done** (waiting for the password) |
 | 5 | Notifications on the phone for inbox items the server adds | Nothing | To do |
 
 Steps 2 and 3 are independent once step 1 is in; 2 first because it fixes the number you look
@@ -241,6 +241,26 @@ Rent arrives as a bare chequing withdrawal, so no merchant pattern can match it.
 - Tests: candidate filter on real subject lines (made up where they'd name people), extraction
   parse and checks with a fake model, order-key updates, dedupe against a tap, account mapping.
   The poller itself behind an interface, tested with a fake mailbox.
+
+### Done (step 4)
+
+- [x] `core/email/Receipts.kt`: the subject filter (`ReceiptFilter`), HTML to text, and
+  `ReceiptReader` with its checks. The model answers through structured output (a JSON
+  schema with every field required), at low effort.
+- [x] `server/EmailPoller.kt`: Gmail over IMAP, read-only, from the last UID (Postgres
+  `email_state`, migration V4); 7 days back the first time; the daily cap stops before the next
+  candidate, so nothing is skipped; a model or network error retries that message next time.
+- [x] `server/web/EmailReceipts.kt`: one transaction per order (`email_orders`), later receipts
+  update the amount (not after a statement reconciled it), the same amount within 36 hours on
+  the same or an unknown card is enriched instead of duplicated, card by last 4 then by name,
+  aliases and rules apply, always CAPTURED. The phone's sync asks for a category suggestion as
+  for any capture.
+- [x] The categorizer now asks at low effort with room to think (Claude Haiku 5.5 thinks by
+  default, and that counts toward `max_tokens`; the old cap of 32 could leave no answer).
+- [x] Tests: subjects, HTML, answer checks, add / update / match / skip, account by name,
+  the poller's cursor, daily cap and retry.
+- [ ] Turn it on: `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD` in `.env.production` on the
+  mini-PC, then restart the server. The log says "Receipts by email: checking INBOX every 5 min".
 
 ## 9. Step 5: notifications for server-added items
 

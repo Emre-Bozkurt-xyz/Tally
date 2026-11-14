@@ -2,6 +2,8 @@ package tally.server
 
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -50,10 +52,36 @@ class AnthropicModelTest {
         val json = Json.parseToJsonElement(body).jsonObject
         assertEquals("claude-haiku-5-5", json["model"]?.jsonPrimitive?.content)
         assertEquals("system prompt", json["system"]?.jsonPrimitive?.content)
-        assertEquals(32, json["max_tokens"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(1024, json["max_tokens"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(null, json["output_config"])
         val message = json["messages"]!!.jsonArray.single().jsonObject
         assertEquals("user", message["role"]?.jsonPrimitive?.content)
         assertEquals("Merchant: X", message["content"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `effort and a schema go in output_config, and thinking blocks are skipped`() {
+        reply = """{"content":[{"type":"thinking","thinking":"","signature":"s"},{"type":"text","text":"{\"ok\":true}"}],"stop_reason":"end_turn"}"""
+        val schema = buildJsonObject { put("type", "object") }
+        val structured = AnthropicModel(
+            apiKey = "test-key",
+            model = "claude-haiku-5-5",
+            effort = "low",
+            outputSchema = schema,
+            endpoint = URI("http://127.0.0.1:${server.address.port}/v1/messages"),
+        )
+        assertEquals("{\"ok\":true}", structured.ask("s", "u"))
+        val config = Json.parseToJsonElement(received.single().second).jsonObject["output_config"]!!.jsonObject
+        assertEquals("low", config["effort"]?.jsonPrimitive?.content)
+        val format = config["format"]!!.jsonObject
+        assertEquals("json_schema", format["type"]?.jsonPrimitive?.content)
+        assertEquals(schema, format["schema"])
+    }
+
+    @Test
+    fun `a declined request is an error, not an empty answer`() {
+        reply = """{"content":[],"stop_reason":"refusal"}"""
+        assertThrows<IOException> { model.ask("s", "u") }
     }
 
     @Test
