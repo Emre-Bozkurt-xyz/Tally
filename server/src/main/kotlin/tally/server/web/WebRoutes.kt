@@ -117,10 +117,18 @@ fun Route.dashboard(edits: WebEdits, rules: RulesEdits, suggester: RuleSuggester
         html(inboxDoneHtml(if (done) "Filed under ${s.label(categoryId)}." else "Already handled."))
     }
 
-    edit("/inbox/{id}/settle/{split}") { id ->
-        val splitId = parameters["split"].orEmpty()
-        val done = withContext(Dispatchers.IO) { edits.settle(id, splitId, source()) }
-        html(inboxDoneHtml(if (done) "Settled." else "Already handled."))
+    edit("/inbox/{id}/settle") { id ->
+        val form = receiveParameters()
+        val even = form["even"] == "1"
+        val person = withContext(Dispatchers.IO) { edits.settle(id, even, form["person"]?.ifBlank { null }, source()) }
+        html(inboxDoneHtml(if (person == null) "Already handled." else if (even) "Even with $person." else "$person paid you back."))
+    }
+
+    edit("/inbox/{id}/from") { id ->
+        val person = receiveParameters()["person"]?.ifBlank { null }
+        val s = snapshot()
+        val t = s.needsReview.find { it.id == id }
+        html(if (t == null) inboxDoneHtml("Already handled.") else inboxItemHtml(s, t, person))
     }
 
     edit("/inbox/{id}/ignore") { id ->

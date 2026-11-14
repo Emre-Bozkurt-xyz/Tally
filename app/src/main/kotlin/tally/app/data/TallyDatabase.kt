@@ -55,6 +55,7 @@ abstract class TallyDatabase : RoomDatabase() {
     abstract fun aliasDao(): AliasDao
     abstract fun tagDao(): TagDao
     abstract fun splitDao(): SplitDao
+    abstract fun settlementDao(): SettlementDao
     abstract fun syncDao(): SyncDao
 
     companion object {

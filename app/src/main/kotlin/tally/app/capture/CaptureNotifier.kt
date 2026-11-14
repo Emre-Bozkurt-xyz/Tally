@@ -14,6 +14,7 @@ import androidx.core.net.toUri
 import tally.app.MainActivity
 import tally.app.R
 import tally.app.data.CapturePipeline
+import tally.core.model.Kind
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.ledger.displayAmount
 import tally.app.ui.ledger.fallbackTitle
@@ -36,7 +37,7 @@ object CaptureNotifier {
     }
 
     /** Shows, updates, or clears the notification to match the capture's state. */
-    fun onCaptured(context: Context, captured: CapturePipeline.Outcome.Captured) {
+    fun onCaptured(context: Context, captured: CapturePipeline.Outcome.Captured, splitWith: String? = null) {
         val transaction = captured.transaction
         if (!captured.needsReview) {
             cancel(context, transaction.id)
@@ -50,7 +51,9 @@ object CaptureNotifier {
 
         val title = "${displayAmount(transaction.amountCents)} · ${captured.merchantName ?: transaction.fallbackTitle()}"
         val guess = if (transaction.categorySource == CategorySource.LLM.name) " (suggested)" else ""
-        val text = captured.categoryName?.let { "$it$guess · tap to confirm" } ?: "Tap to pick a category"
+        val owedNote = captured.owedNote?.let { "$it · " }.orEmpty()
+        val text = owedNote + (captured.categoryName?.let { "$it$guess · tap to confirm" } ?: "Tap to pick a category")
+        val half = splitWith?.takeIf { captured.owedNote == null && transaction.amountCents > 0 && transaction.kind == Kind.EXPENSE.name }
         val change = PendingIntent.getActivity(
             context,
             0,
@@ -75,14 +78,18 @@ object CaptureNotifier {
             .addAction(0, "Change", change)
             .addAction(
                 0,
-                "Split",
-                PendingIntent.getActivity(
-                    context,
-                    0,
-                    MainActivity.transactionIntent(context, transaction.id)
-                        .setData("tally://capture/${transaction.id}/split".toUri()),
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-                ),
+                if (half != null) "\u00bd ${half.substringBefore(' ')}" else "Split",
+                if (half != null) {
+                    action(context, CaptureActionReceiver.ACTION_SPLIT_HALF, transaction.id) { putExtra(CaptureActionReceiver.EXTRA_PERSON, half) }
+                } else {
+                    PendingIntent.getActivity(
+                        context,
+                        0,
+                        MainActivity.transactionIntent(context, transaction.id)
+                            .setData("tally://capture/${transaction.id}/split".toUri()),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                    )
+                },
             )
             .addAction(0, "Ignore", action(context, CaptureActionReceiver.ACTION_IGNORE, transaction.id))
             .build()
@@ -105,14 +112,15 @@ object CaptureNotifier {
         NotificationManagerCompat.from(context).cancel(transactionId, NOTIFICATION_ID)
     }
 
-    private fun action(context: Context, action: String, transactionId: String): PendingIntent =
+    private fun action(context: Context, action: String, transactionId: String, extras: Intent.() -> Unit = {}): PendingIntent =
         PendingIntent.getBroadcast(
             context,
             0,
             Intent(context, CaptureActionReceiver::class.java)
                 .setAction(action)
                 .setData("tally://capture/$transactionId/$action".toUri())
-                .putExtra(CaptureActionReceiver.EXTRA_TRANSACTION_ID, transactionId),
+                .putExtra(CaptureActionReceiver.EXTRA_TRANSACTION_ID, transactionId)
+                .apply(extras),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 }

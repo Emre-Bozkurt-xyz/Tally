@@ -69,6 +69,9 @@ import tally.app.ui.ledger.counts
 import tally.app.ui.ledger.dayLabel
 import tally.app.ui.ledger.fallbackTitle
 import tally.app.ui.ledger.occurredAtLocal
+import tally.app.ui.split.QuickSplitRow
+import tally.app.ui.split.SplitSheet
+import tally.app.ui.split.parseCents
 import tally.core.capture.WatchedPackages
 import tally.core.model.CategorySource
 import tally.core.model.Kind
@@ -103,11 +106,14 @@ fun TransactionScreen(
     val allTags by remember { ledger.observeTags() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val splits by remember(id) { ledger.observeSplitsFor(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val notifications by remember(id) { ledger.observeNotificationsFor(id) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val people by remember { ledger.observeRecentPeople() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val categoryNames = remember(categories) { categories.associate { it.id to it.name } }
     val chips = remember(activeCategories) { activeCategories.chipCategories() }
 
     var addingTag by remember { mutableStateOf(false) }
     var addingSplit by remember { mutableStateOf(false) }
+    // "Split with someone", opened from a chip: null when closed, "" for no one picked yet.
+    var splittingWith by remember { mutableStateOf<String?>(null) }
     var picking by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -253,6 +259,18 @@ fun TransactionScreen(
                         color = Tally.colors.muted,
                         modifier = Modifier.padding(top = 10.dp),
                     )
+                    if (remainder > 0 && t.kind == Kind.EXPENSE.name) {
+                        QuickSplitRow(
+                            people = people,
+                            amountCents = t.amountCents,
+                            leftCents = remainder,
+                            owed = emptyList(),
+                            onSplit = { person, cents -> scope.launch { ledger.splitWith(id, person, cents) } },
+                            onRemove = {},
+                            onMore = { person -> splittingWith = person.orEmpty() },
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
                     if (remainder > 0) {
                         PillButton(
                             "Split off part",
@@ -294,6 +312,16 @@ fun TransactionScreen(
                 existing = allTags.filter { all -> tags.none { it.id == all.id } },
                 onAdd = { name -> ledger.addTag(id, name) },
                 onDismiss = { addingTag = false },
+            )
+        }
+        splittingWith?.let { person ->
+            SplitSheet(
+                amountCents = t.amountCents,
+                leftCents = t.amountCents - splits.sumOf { it.amountCents },
+                people = people,
+                initialPerson = person.ifEmpty { null },
+                onSplit = { who, cents -> ledger.splitWith(id, who, cents).exceptionOrNull()?.message },
+                onDismiss = { splittingWith = null },
             )
         }
         if (addingSplit) {
@@ -434,7 +462,3 @@ private fun SplitDialog(
     }
 }
 
-private fun parseCents(text: String): Long? {
-    val match = Regex("\\$?(\\d+)(?:\\.(\\d{1,2}))?").matchEntire(text.trim()) ?: return null
-    return match.groupValues[1].toLong() * 100 + match.groupValues[2].padEnd(2, '0').ifEmpty { "00" }.toLong()
-}

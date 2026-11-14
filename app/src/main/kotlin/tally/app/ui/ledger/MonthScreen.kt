@@ -69,11 +69,9 @@ fun MonthScreen(ledger: LedgerRepository, onBack: () -> Unit) {
     val categories by remember { ledger.observeAllCategories() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val byId = remember(categories) { categories.associateBy { it.id } }
-    val splits by remember { ledger.observeAllSplits() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val entries by remember { ledger.observeLedgerEntries() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val counting = remember(categories) { categories.counting() }
-    val summary = remember(transactions, splits, byId, month, counting) {
-        val splitsByTransaction = splits.groupBy { it.transactionId }
-        val entries = transactions.flatMap { it.ledgerEntries(splitsByTransaction[it.id].orEmpty()) }
+    val summary = remember(entries, byId, month, counting) {
         MonthSummary.of(month, entries, counting) { id -> byId[id]?.parentId }
     }
     val (everydayTotals, fixedTotals) = remember(summary, counting) { summary.categories.partition { counting.categoryCounts(it.categoryId) } }

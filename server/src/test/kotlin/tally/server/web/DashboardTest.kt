@@ -164,23 +164,47 @@ class DashboardTest {
     }
 
     @Test
-    fun `money in that matches an owed part is settled from the inbox`() = app {
+    fun `money in from someone who owes you settles their balance from the inbox`() = app {
         sync.write(
             listOf(
                 Rows.splits.encode(SplitRow("s1", "t-coffee", 2_00, null, "Priya", 1), null),
                 Rows.merchants.encode(MerchantRow("m-priya", "Priya Shah", null, 0, 0), null),
                 Rows.transactions.encode(
-                    coffee1.copy(id = "t-in", amountCents = -2_00, merchantId = "m-priya", merchantRaw = "PRIYA SHAH", categoryId = null,
+                    coffee1.copy(id = "t-in", amountCents = -1_90, merchantId = "m-priya", merchantRaw = "PRIYA SHAH", categoryId = null,
                         status = TransactionStatus.CAPTURED.name, categorySource = null, kind = "INCOME"),
                     null,
                 ),
             ),
         )
-        assertTrue("Settles Priya" in client.get("/inbox").bodyAsText())
-        assertTrue("Settled." in edit("/inbox/t-in/settle/s1").bodyAsText())
+        val inbox = client.get("/inbox").bodyAsText().text()
+        assertTrue("Priya owes \$2.00 (1 item)" in inbox, inbox)
+        assertTrue("Call it even" in inbox && "Keep \$0.10 owing" in inbox, inbox)
+        assertTrue("Owed to you" in client.get("/").bodyAsText())
+
+        assertTrue("Even with Priya." in edit("/inbox/t-in/settle", "even" to "1").bodyAsText())
         val s = edits.snapshot()
         assertEquals(TransactionStatus.CONFIRMED.name to "TRANSFER", s.transactions.single { it.id == "t-in" }.let { it.status to it.kind })
-        assertTrue(s.openOwed.isEmpty())
+        assertEquals(0L, s.balances.single().balanceCents)
+        assertEquals(10L, sync.current("settlements").mapNotNull { Rows.settlements.decode(it) }.single().differenceCents)
+        assertTrue(s.owing.isEmpty())
+    }
+
+    @Test
+    fun `a deposit with no name can be from someone who owes you`() = app {
+        sync.write(
+            listOf(
+                Rows.splits.encode(SplitRow("s1", "t-coffee", 2_00, null, "Sam", 1), null),
+                Rows.transactions.encode(
+                    coffee1.copy(id = "t-in", amountCents = -2_00, merchantId = null, merchantRaw = null, categoryId = null,
+                        status = TransactionStatus.CAPTURED.name, categorySource = null, kind = "INCOME"),
+                    null,
+                ),
+            ),
+        )
+        assertTrue("From someone?" in client.get("/inbox").bodyAsText())
+        assertTrue("Sam owes" in edit("/inbox/t-in/from", "person" to "Sam").bodyAsText().text())
+        assertTrue("Sam paid you back." in edit("/inbox/t-in/settle", "even" to "0", "person" to "Sam").bodyAsText())
+        assertEquals(0L, edits.snapshot().balances.single().balanceCents)
     }
 
     @Test

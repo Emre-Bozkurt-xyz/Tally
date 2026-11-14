@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -23,8 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import tally.app.data.LedgerRepository
-import tally.app.data.SplitEntity
-import tally.app.data.TransactionEntity
 import tally.app.ui.components.AmountText
 import tally.app.ui.components.LetterAvatar
 import tally.app.ui.components.ListRow
@@ -39,14 +38,17 @@ import tally.app.ui.components.TallyCard
 import tally.app.ui.components.TallyTopBar
 import tally.app.ui.components.groupShape
 import tally.app.ui.ledger.dayLabel
-import tally.app.ui.ledger.ledgerEntries
+import tally.app.ui.ledger.observeLedgerEntries
 import tally.app.ui.ledger.occurredAtLocal
 import tally.app.ui.theme.Tally
+import tally.app.ui.theme.TallyIcons
 import tally.core.model.Money
 import tally.core.report.LedgerEntry
 import tally.core.report.Recurring
 import tally.core.report.Trends
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
@@ -57,12 +59,8 @@ private val DAY = DateTimeFormatter.ofPattern("MMM d")
 /** Every transaction as report entries, splits expanded. Recomputed when anything changes. */
 @Composable
 private fun rememberEntries(ledger: LedgerRepository): List<LedgerEntry> {
-    val transactions by remember { ledger.observeTransactions() }.collectAsStateWithLifecycle(initialValue = emptyList())
-    val splits by remember { ledger.observeAllSplits() }.collectAsStateWithLifecycle(initialValue = emptyList())
-    return remember(transactions, splits) {
-        val byTransaction = splits.groupBy { it.transactionId }
-        transactions.flatMap { it.ledgerEntries(byTransaction[it.id].orEmpty()) }
-    }
+    val entries by remember { ledger.observeLedgerEntries() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    return entries
 }
 
 @Composable
@@ -216,62 +214,107 @@ fun SubscriptionsScreen(ledger: LedgerRepository, onBack: () -> Unit) {
 
 // --- Owed to me ---
 
-/** Split portions others owe you, by person; mark them settled when paid back. */
+/**
+ * Who owes you what: one balance per person (what they owe for, minus what they paid back),
+ * the items still open, Settle up for cash or anything Tally didn't see, and their history.
+ */
 @Composable
 fun OwedScreen(ledger: LedgerRepository, onOpenTransaction: (String) -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val owed by remember { ledger.observeOwed() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val balances by remember { ledger.observeBalances() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val transactions by remember { ledger.observeTransactions() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val merchantNames = rememberMerchantNames(ledger)
     val byId = remember(transactions) { transactions.associateBy { it.id } }
-    // Parts of deleted transactions don't count.
-    val live = owed.filter { it.transactionId in byId }
-    val outstanding = live.filter { it.settledAt == null }.groupBy { it.owedBy!! }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
-    val settled = live.filter { it.settledAt != null }.sortedByDescending { it.settledAt }.take(20)
+    val expanded = remember { mutableStateMapOf<String, Boolean>() }
     val today = LocalDate.now()
+    val (square, open) = balances.partition { it.balanceCents == 0L }
+
+    fun titleOf(transactionId: String?) = transactionId?.let { byId[it] }?.let { t ->
+        t.merchantId?.let { merchantNames[it] } ?: t.merchantRaw
+    }
+
+    fun dayOf(epochMillis: Long) = dayLabel(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate(), today)
 
     InsightScaffold("Owed to me", onBack) {
         hero(
-            "Outstanding",
-            outstanding.values.flatten().sumOf { it.amountCents },
-            "Add these from a purchase: Split off part → Someone owes me. Money from them settles it in the inbox.",
+            "Owed to you",
+            open.filter { it.balanceCents > 0 }.sumOf { it.balanceCents },
+            "Split a purchase with someone: ½ with Sam in the inbox, or Split on a purchase. Money from them settles it in the inbox.",
         )
-        outstanding.forEach { (person, parts) ->
-            item(key = "person:$person") { SectionHeader("$person · ${Money.format(parts.sumOf { it.amountCents })}") }
-            grouped(parts, key = { it.id }) { part, modifier ->
-                OwedRow(part, byId[part.transactionId], merchantNames, today, onOpenTransaction, modifier) {
-                    PillButton("Settled", { scope.launch { ledger.setSettled(part.id, true) } }, style = PillStyle.Primary, height = 36.dp)
+        (open + square).forEach { balance ->
+            val person = balance.person
+            val showing = expanded[person] == true
+            val history = balance.repayments.isNotEmpty() || balance.items.any { balance.isPaid(it) }
+            item(key = "person:$person") {
+                SectionHeader(
+                    when {
+                        balance.balanceCents > 0 -> "$person owes ${Money.format(balance.balanceCents)}"
+                        balance.balanceCents < 0 -> "$person · ${Money.format(-balance.balanceCents)} credit"
+                        else -> "$person · all square"
+                    },
+                    action = if (history) (if (showing) "Hide history" else "History") else null,
+                    onAction = { expanded[person] = !showing },
+                )
+            }
+            grouped(balance.open, key = { "open:${it.first.id}" }) { (part, left), modifier ->
+                ListRow(
+                    title = titleOf(part.transactionId) ?: "Purchase",
+                    subtitle = listOfNotNull(
+                        dayOf(part.occurredAt),
+                        if (left < part.amountCents) "${Money.format(left)} of ${Money.format(part.amountCents)} left" else null,
+                    ).joinToString(" · "),
+                    modifier = modifier,
+                    leading = { LetterAvatar(person, person, size = 36.dp) },
+                    trailing = { AmountText(left, MaterialTheme.typography.titleMedium, centsScale = 0.85f) },
+                    onClick = part.transactionId?.let { id -> { onOpenTransaction(id) } },
+                )
+            }
+            if (balance.balanceCents > 0) {
+                item(key = "settle:$person") {
+                    PillButton(
+                        "Settle up ${Money.format(balance.balanceCents)}",
+                        { scope.launch { ledger.settle(person, balance.balanceCents) } },
+                        Modifier.padding(horizontal = ScreenPadding).padding(top = 10.dp).fillMaxWidth(),
+                        style = PillStyle.Soft,
+                        icon = TallyIcons.Check,
+                        height = 44.dp,
+                    )
                 }
             }
-        }
-        if (settled.isNotEmpty()) {
-            item { SectionHeader("Recently settled") }
-            grouped(settled, key = { "settled:${it.id}" }) { part, modifier ->
-                OwedRow(part, byId[part.transactionId], merchantNames, today, onOpenTransaction, modifier) {
-                    PillButton("Undo", { scope.launch { ledger.setSettled(part.id, false) } }, style = PillStyle.Soft, height = 36.dp)
-                }
+            if (showing) {
+                val rows: List<Pair<Long, @Composable (Modifier) -> Unit>> =
+                    balance.repayments.map { paid ->
+                        paid.occurredAt to @Composable { modifier: Modifier ->
+                            ListRow(
+                                title = "Paid ${Money.format(paid.amountCents)}",
+                                subtitle = listOfNotNull(
+                                    dayOf(paid.occurredAt),
+                                    if (paid.transactionId != null) "e-Transfer" else "Settled up",
+                                    when {
+                                        paid.differenceCents > 0 -> "called even, ${Money.format(paid.differenceCents)} short"
+                                        paid.differenceCents < 0 -> "called even, ${Money.format(-paid.differenceCents)} over"
+                                        else -> null
+                                    },
+                                ).joinToString(" · "),
+                                modifier = modifier,
+                                trailing = {
+                                    PillButton("Remove", { scope.launch { ledger.undoSettlement(paid.id) } }, style = PillStyle.Soft, height = 36.dp)
+                                },
+                            )
+                        }
+                    } + balance.items.filter { balance.isPaid(it) }.map { part ->
+                        part.occurredAt to @Composable { modifier: Modifier ->
+                            ListRow(
+                                title = titleOf(part.transactionId) ?: "Purchase",
+                                subtitle = "${dayOf(part.occurredAt)} · ${Money.format(part.amountCents)} · paid",
+                                modifier = modifier,
+                                onClick = part.transactionId?.let { id -> { onOpenTransaction(id) } },
+                            )
+                        }
+                    }
+                val sorted = rows.sortedByDescending { it.first }.take(30)
+                grouped(sorted.indices.toList(), key = { "history:$person:$it" }) { index, modifier -> sorted[index].second(modifier) }
             }
         }
     }
-}
-
-@Composable
-private fun OwedRow(
-    part: SplitEntity,
-    transaction: TransactionEntity?,
-    merchantNames: Map<String, String>,
-    today: LocalDate,
-    onOpenTransaction: (String) -> Unit,
-    modifier: Modifier,
-    action: @Composable () -> Unit,
-) {
-    val title = transaction?.merchantId?.let { merchantNames[it] } ?: transaction?.merchantRaw ?: "Purchase"
-    ListRow(
-        title = "${part.owedBy} · ${Money.format(part.amountCents)}",
-        subtitle = listOfNotNull(title, transaction?.let { dayLabel(it.occurredAtLocal().toLocalDate(), today) }).joinToString(" · "),
-        modifier = modifier,
-        leading = { LetterAvatar(part.owedBy.orEmpty(), part.owedBy, size = 36.dp) },
-        trailing = action,
-        onClick = { onOpenTransaction(part.transactionId) },
-    )
 }

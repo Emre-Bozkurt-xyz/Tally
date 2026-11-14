@@ -54,7 +54,7 @@ import tally.app.data.LedgerRepository
 import tally.app.data.chipCategories
 import tally.app.quickentry.QuickEntryActivity
 import tally.app.ui.ledger.counting
-import tally.app.ui.ledger.ledgerEntries
+import tally.app.ui.ledger.observeLedgerEntries
 import tally.core.entry.CategoryRanking
 import tally.core.model.Money
 import tally.core.report.BudgetStatus
@@ -62,7 +62,6 @@ import tally.core.report.BudgetedCategory
 import tally.core.report.Budgets
 import tally.core.report.WeekSpend
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.temporal.WeekFields
 import java.util.Locale
@@ -123,9 +122,8 @@ class QuickAddWidget : GlanceAppWidget() {
                 val today = LocalDate.now()
                 val firstDay = WeekFields.of(Locale.getDefault()).firstDayOfWeek
                 // A day of slack covers transactions logged in other time zones.
-                val since = today.minusDays(8).atStartOfDay(ZoneId.systemDefault()).toInstant()
-                val splits = ledger.observeAllSplits().first().groupBy { it.transactionId }
-                val entries = ledger.transactionsSince(since).flatMap { it.ledgerEntries(splits[it.id].orEmpty()) }
+                val since = today.minusDays(8)
+                val entries = ledger.observeLedgerEntries().first().filter { !it.date.isBefore(since) }
                 val categories = ledger.observeCategories().first()
                 val counting = ledger.observeAllCategories().first().counting()
                 // The everyday number: rent and bills (whatever's switched off) stay out, budgets too.

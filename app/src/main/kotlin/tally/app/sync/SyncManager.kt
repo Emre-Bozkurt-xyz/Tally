@@ -23,6 +23,7 @@ import kotlinx.serialization.SerializationException
 import tally.app.appContainer
 import tally.app.capture.CaptureNotifier
 import tally.app.data.TallyDatabase
+import tally.app.data.recentSplitPerson
 import tally.core.sync.SyncProtocol
 import java.io.IOException
 import java.time.Clock
@@ -44,7 +45,7 @@ class SyncManager(
     private val client = SyncClient(db, transport, settings, settings::deviceId, clock)
     private val suggester = CategorySuggester(db, transport::categorize, clock) { captured ->
         // Only refresh a notification that's still showing; don't resurrect a swiped one.
-        if (CaptureNotifier.isShowing(context, captured.transaction.id)) CaptureNotifier.onCaptured(context, captured)
+        if (CaptureNotifier.isShowing(context, captured.transaction.id)) CaptureNotifier.onCaptured(context, captured, db.recentSplitPerson())
     }
 
     sealed interface Outcome {

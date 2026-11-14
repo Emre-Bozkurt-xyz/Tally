@@ -47,7 +47,9 @@ import tally.core.model.CategorySource
 import tally.core.model.Kind
 import tally.core.model.Money
 import tally.core.model.TransactionStatus
+import tally.core.report.Balances
 import tally.core.report.BudgetStatus
+import tally.core.report.Offer
 import tally.core.rules.TomlImport
 import tally.core.statement.StatementKind
 import java.time.LocalDate
@@ -199,6 +201,13 @@ fun FlowContent.overview(o: Overview) {
                 monoLabel("Came in")
                 div("value") { amount(o.summary.incomeCents) }
                 div("sub") { +"Income this month" }
+            }
+            if (s.owing.isNotEmpty()) {
+                div("card stat") {
+                    monoLabel("Owed to you")
+                    div("value") { amount(s.owing.sumOf { it.balanceCents }) }
+                    div("sub") { +s.owing.take(3).joinToString(" · ") { "${it.person.substringBefore(' ')} ${Money.format(it.balanceCents)}" } }
+                }
             }
             if (s.needsReview.isNotEmpty()) {
                 a(href = "/inbox", classes = "card stat attention") {
@@ -463,7 +472,10 @@ fun FlowContent.inbox(s: Snapshot) {
     div("inbox") { s.needsReview.forEach { inboxItem(s, it) } }
 }
 
-fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow) {
+fun inboxItemHtml(s: Snapshot, t: TransactionRow, picked: String? = null): String = createHTML().div { inboxItem(s, t, picked) }
+
+/** [picked]: who a deposit with no name came from, once you said. */
+fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow, picked: String? = null) {
     div("card item") {
         id = "item-${t.id}"
         val name = s.merchantName(t)
@@ -480,13 +492,34 @@ fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow) {
             }
             amount(t.amountCents, "lg")
         }
-        val settling = s.settles(t)
+        val settling = s.payer(t, picked)
+        val offer = settling?.let { Balances.offer(it.balanceCents, -t.amountCents) }
         div("suggestion") {
             when {
                 settling != null -> {
-                    monoLabel("Settles")
-                    span("what") { +"Settles ${settling.owedBy}'s ${Money.format(settling.amountCents)}" }
+                    monoLabel("Pays back")
+                    span("what") {
+                        +"${settling.person} owes ${Money.format(settling.balanceCents)}"
+                        settling.open.size.let { n -> span("muted") { +" ($n item${if (n == 1) "" else "s"})" } }
+                        when (offer) {
+                            is Offer.Partial -> span("muted") { +" · settling leaves ${Money.format(offer.leftCents)} owing" }
+                            is Offer.Over -> span("muted") { +" · ${Money.format(offer.creditCents)} more than owed, kept as credit" }
+                            else -> {}
+                        }
+                    }
                     pill("owed to you", "good")
+                }
+                s.isDeposit(t) && s.senderOf(t).isNullOrBlank() && s.owing.isNotEmpty() -> {
+                    monoLabel("From someone?")
+                    s.owing.take(3).forEach { balance ->
+                        button(classes = "quiet") {
+                            attributes["hx-post"] = "/inbox/${t.id}/from"
+                            attributes["hx-vals"] = buildJsonObject { put("person", balance.person) }.toString()
+                            attributes["hx-target"] = "#item-${t.id}"
+                            attributes["hx-swap"] = "outerHTML"
+                            +"${balance.person.substringBefore(' ')} · ${Money.format(balance.balanceCents)}"
+                        }
+                    }
                 }
                 t.categoryId != null -> {
                     monoLabel("Suggested")
@@ -508,12 +541,27 @@ fun FlowContent.inboxItem(s: Snapshot, t: TransactionRow) {
         }
         div("item-actions") {
             if (settling != null) {
-                button(classes = "primary") {
-                    attributes["hx-post"] = "/inbox/${t.id}/settle/${settling.splitId}"
+                fun FlowContent.settleButton(even: Boolean, classes: String, text: String) = button(classes = classes) {
+                    attributes["hx-post"] = "/inbox/${t.id}/settle"
+                    attributes["hx-vals"] = buildJsonObject {
+                        put("even", if (even) "1" else "0")
+                        picked?.let { put("person", it) }
+                    }.toString()
                     attributes["hx-target"] = "#item-${t.id}"
                     attributes["hx-swap"] = "outerHTML"
-                    icon("check")
-                    +"Settle"
+                    if (classes == "primary") icon("check")
+                    +text
+                }
+                if (offer is Offer.Close) {
+                    settleButton(true, "primary", "Call it even")
+                    val difference = offer.differenceCents
+                    settleButton(
+                        false,
+                        "quiet",
+                        if (difference > 0) "Keep ${Money.format(difference)} owing" else "Keep ${Money.format(-difference)} as credit",
+                    )
+                } else {
+                    settleButton(false, "primary", "Settle")
                 }
             } else if (t.categoryId != null) {
                 button(classes = "primary") {

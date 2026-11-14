@@ -119,16 +119,32 @@ class LedgerRepositoryTest {
     }
 
     @Test
-    fun `owed parts can be settled and unsettled`() = runTest {
-        val dinner = ledger.saveQuickEntry(null, 3000, groceries, cash, note = null)
-        ledger.addSplit(dinner.id, 1000, null, owedBy = "Sam")
-        val part = ledger.observeOwed().first().single()
-        assertNull(part.settledAt)
+    fun `half with someone, and a balance per person whatever name they go by`() = runTest {
+        val dinner = ledger.saveQuickEntry(null, 30_01, groceries, cash, note = null)
+        val split = ledger.splitWith(dinner.id, "Sam", 15_00).getOrThrow()
+        assertEquals(listOf("Sam"), ledger.recentPeople())
+        val lunch = ledger.saveQuickEntry(null, 20_00, coffee, cash, note = null)
+        ledger.splitWith(lunch.id, "Sam Lee", 10_00).getOrThrow()
 
-        ledger.setSettled(part.id, true)
-        assertEquals(now.toEpochMilli(), ledger.observeOwed().first().single().settledAt)
-        ledger.setSettled(part.id, false)
-        assertNull(ledger.observeOwed().first().single().settledAt)
+        val sam = ledger.balances().single()
+        assertEquals("Sam Lee" to 25_00L, sam.person to sam.balanceCents)
+        assertTrue(ledger.splitWith(lunch.id, "Jane", 10_01).isFailure)
+
+        ledger.deleteSplit(split)
+        assertEquals(10_00L, ledger.balances().single().balanceCents)
+        ledger.deleteTransaction(lunch.id)
+        assertEquals(emptyList<Any>(), ledger.balances())
+    }
+
+    @Test
+    fun `settle up records a payment for the whole balance, and removing it brings the balance back`() = runTest {
+        val dinner = ledger.saveQuickEntry(null, 30_00, groceries, cash, note = null)
+        ledger.splitWith(dinner.id, "Sam", 15_00)
+        val paid = ledger.settle("sam", 15_00)!!
+        assertEquals(0L, ledger.balances().single().balanceCents)
+        assertEquals("Sam", db.settlementDao().getById(paid)!!.person)
+        ledger.undoSettlement(paid)
+        assertEquals(15_00L, ledger.balances().single().balanceCents)
     }
 
     @Test
@@ -198,18 +214,39 @@ class LedgerRepositoryTest {
     }
 
     @Test
-    fun `a payment that settles an owed part is a transfer`() = runTest {
+    fun `an e-Transfer that pays back a balance is a transfer, and undo puts it back`() = runTest {
         val dinner = ledger.saveQuickEntry(null, 62_00, groceries, cash, note = null)
-        ledger.addSplit(dinner.id, 31_00, null, owedBy = "Priya")
-        val part = ledger.openOwedParts().single()
-        assertEquals("Priya" to 31_00L, part.owedBy to part.amountCents)
+        val drinks = ledger.saveQuickEntry(null, 12_80, coffee, cash, note = null)
+        ledger.splitWith(dinner.id, "Priya", 31_00)
+        ledger.splitWith(drinks.id, "Priya", 6_40)
+        assertEquals(2, ledger.balances().single().open.size)
 
-        val payment = moneyIn(31_00, "Priya Shah")
-        assertTrue(ledger.settleOwedWith(payment.id, part.splitId))
+        val payment = moneyIn(20_00, "Priya Shah")
+        val paid = ledger.settle("Priya Shah", 20_00, payment.id)!!
         val settled = ledger.getTransaction(payment.id)!!
         assertEquals(Kind.TRANSFER.name to TransactionStatus.CONFIRMED.name, settled.kind to settled.status)
         assertEquals("Priya paid back", settled.note)
-        assertTrue(ledger.openOwedParts().isEmpty())
-        assertFalse(ledger.settleOwedWith(payment.id, part.splitId))
+        assertEquals(17_40L, ledger.balances().single().balanceCents)
+
+        ledger.undoSettlement(paid, restore = payment)
+        assertEquals(payment.copy(updatedAt = now.toEpochMilli()), ledger.getTransaction(payment.id))
+        assertEquals(37_40L, ledger.balances().single().balanceCents)
+    }
+
+    @Test
+    fun `calling it even clears the balance and counts the shortfall as spending where they owed`() = runTest {
+        val dinner = ledger.saveQuickEntry(null, 62_00, groceries, cash, note = null)
+        ledger.splitWith(dinner.id, "Priya", 31_00)
+        val payment = moneyIn(30_00, "Priya Shah")
+        ledger.settle("Priya Shah", 30_00, payment.id, callItEven = true)
+
+        assertEquals(0L, ledger.balances().single().balanceCents)
+        val stored = db.settlementDao().observeActive().first().single()
+        assertEquals(1_00L, stored.differenceCents)
+        val entries = tally.app.ui.ledger.ledgerEntriesOf(
+            ledger.observeTransactions().first(), ledger.observeAllSplits().first(), listOf(stored), zone,
+        )
+        // Dinner (31.00 yours, 31.00 owed), the payment a transfer, and the 1.00 you let go of.
+        assertEquals(32_00L, entries.filter { it.kind == Kind.EXPENSE && it.categoryId == groceries }.sumOf { it.amountCents })
     }
 }

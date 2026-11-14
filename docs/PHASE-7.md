@@ -43,7 +43,7 @@ setup from you (email) comes last, giving you time to make the app password.
 | 0 | Capture fixes: deposits, card payments, noise, late re-posts, Interac texts | Nothing | **Done** (`31bf494`, `26b1433`) |
 | 1 | One database migration (v8) for steps 2 and 3, synced everywhere | Nothing | **Done** |
 | 2 | Rules without a merchant (rent) and "What counts" | Nothing | **Done** |
-| 3 | Quick splits, balances per person, settling e-Transfers | Nothing | To do |
+| 3 | Quick splits, balances per person, settling e-Transfers | Nothing | **Done** |
 | 4 | Receipts from email on the server | App password in `.env.production` | To do |
 | 5 | Notifications on the phone for inbox items the server adds | Nothing | To do |
 
@@ -156,10 +156,11 @@ Rent arrives as a bare chequing withdrawal, so no merchant pattern can match it.
 - "Owed to me" becomes a list of people with balances; tap one for their history (parts and
   settlements, newest first) and **Settle up** (records a settlement for the whole balance, for
   cash or anything Tally didn't see).
-- Which parts are "paid" is derived oldest first for display; existing `settledAt` stays
-  meaningful for old data and is set as balances clear.
+- Which parts are "paid" is derived oldest first (`Balance.open`); nothing is written back to
+  the parts. `settledAt` only marks parts paid the old per-item way before v8, and they stay
+  paid. Removing a payment brings the balance back, with no bookkeeping to undo.
 - Names: "Sam" and "Sam Lee" are the same person (first-name or full-name agreement, as
-  `OwedMatch` does now).
+  `OwedMatch` did; it's now `People` and `Balances.forSender` in `core/report/Balances.kt`).
 
 ### Settling an e-Transfer
 
@@ -179,6 +180,27 @@ Rent arrives as a bare chequing withdrawal, so no merchant pattern can match it.
 - Dashboard: the same settle action in the web inbox; balances on the Overview.
 - Tests: balance maths (bulk, partial, over, under), call-it-even effect on month totals, name
   matching, inbox flows.
+
+### Done (step 3)
+
+- [x] `core/report/Balances.kt`: balances per person, oldest-first coverage, credit, the
+  call-it-even slack (`Offer`), name matching (`People`), and call-it-even differences as
+  report entries (shortfall spending, overpayment money back, in the category of the most
+  recent thing owed for).
+- [x] Every report (Home, Month, Insights, widget, dashboard) reads one feed that includes
+  those differences (`observeLedgerEntries`, `Snapshot.entries`).
+- [x] "½ with Sam" chips on inbox purchases and the transaction screen (undo from the inbox
+  snackbar; tap an owed chip to take it back), long-press or "Split…" for ½ ⅓ ¼, an amount,
+  or someone else. Their share rounds down: you keep the odd cent.
+- [x] Capture notification: "½ Sam" for the most recent person in place of "Split"; after it,
+  the notification says "Sam owes $6.49" and still waits for a yes.
+- [x] Inbox deposits: "Sam owes $68.40 (3 items)", Settle / Call it even / Keep $1.40 owing
+  (or as credit); undo restores the deposit as it was. Unnamed deposits ask "From someone?".
+- [x] "Owed to me": one section per person with what's open, Settle up, and history
+  (payments, with Remove, and paid items).
+- [x] Dashboard: the same settle choices in the web inbox, "From someone?" for unnamed
+  deposits, and "Owed to you" on the Overview.
+- [x] Tests: core balance maths, app repository flows, dashboard settle flows.
 
 ## 8. Step 4: receipts by email (server)
 

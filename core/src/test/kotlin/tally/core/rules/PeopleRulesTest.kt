@@ -1,14 +1,11 @@
 package tally.core.rules
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tally.core.model.CategoryKinds
 import tally.core.model.CategorySource
 import tally.core.model.Kind
-import tally.core.report.OwedMatch
-import tally.core.report.OwedPart
 
 /** Money to and from people: rules as defaults, memory that suggests but never files, paying back. */
 class PeopleRulesTest {
@@ -58,19 +55,5 @@ class PeopleRulesTest {
         assertEquals(Kind.EXPENSE, CategoryKinds.kindFor(Kind.EXPENSE, 4_25, incomeCategory = false))
         assertEquals(Kind.TRANSFER, CategoryKinds.kindFor(Kind.TRANSFER, -387_97, incomeCategory = true))
         assertTrue(CategoryKinds.isIncome("income"))
-    }
-
-    @Test
-    fun `a payment from a person settles the open part with that amount and name`() {
-        val open = listOf(
-            OwedPart("s1", "Sam", 12_00),
-            OwedPart("s2", "Priya", 31_00),
-            OwedPart("s3", "Priya", 31_00),
-        )
-        assertEquals("s2", OwedMatch.find("PRIYA SHAH", 31_00, open)?.splitId)
-        assertEquals("s1", OwedMatch.find("Sam Smith", 12_00, open)?.splitId)
-        assertNull(OwedMatch.find("Priya Shah", 30_00, open))
-        assertNull(OwedMatch.find("Alex Kim", 12_00, open))
-        assertNull(OwedMatch.find(null, 12_00, open))
     }
 }

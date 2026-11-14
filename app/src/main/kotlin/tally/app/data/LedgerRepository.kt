@@ -4,6 +4,7 @@ import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import tally.core.capture.WatchedPackages
 import tally.core.entry.CategoryRanking
@@ -17,7 +18,11 @@ import tally.core.model.Source
 import tally.core.model.TransactionStatus
 import tally.core.normalize.MerchantIds
 import tally.core.normalize.MerchantNormalizer
-import tally.core.report.OwedPart
+import tally.core.report.Balance
+import tally.core.report.Balances
+import tally.core.report.Owed
+import tally.core.report.People
+import tally.core.report.Repayment
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -85,28 +90,113 @@ class LedgerRepository(
      * Splits off part of a purchase: into another category, or as money [owedBy] someone.
      * Parts can't add up to more than the purchase. Returns an error, or null.
      */
-    suspend fun addSplit(transactionId: String, amountCents: Long, categoryId: String?, owedBy: String?): String? {
-        val transaction = transactions.getById(transactionId) ?: return "That transaction no longer exists"
-        if (transaction.amountCents <= 0) return "Only purchases can be split"
-        if (amountCents <= 0) return "Enter an amount"
+    suspend fun addSplit(transactionId: String, amountCents: Long, categoryId: String?, owedBy: String?): String? =
+        newSplit(transactionId, amountCents, categoryId, owedBy).exceptionOrNull()?.message
+
+    /** "½ with Sam": [cents] of a purchase owed by [person]. Returns the split's id (for undo), or an error. */
+    suspend fun splitWith(transactionId: String, person: String, cents: Long): Result<String> =
+        newSplit(transactionId, cents, null, person)
+
+    private suspend fun newSplit(transactionId: String, amountCents: Long, categoryId: String?, owedBy: String?): Result<String> {
+        fun error(message: String) = Result.failure<String>(IllegalArgumentException(message))
+        val transaction = transactions.getById(transactionId) ?: return error("That transaction no longer exists")
+        if (transaction.amountCents <= 0) return error("Only purchases can be split")
+        if (amountCents <= 0) return error("Enter an amount")
         val owed = owedBy?.trim()?.ifEmpty { null }
-        if (owed == null && categoryId == null) return "Pick a category or who owes it"
+        if (owed == null && categoryId == null) return error("Pick a category or who owes it")
         val used = db.splitDao().getFor(transactionId).sumOf { it.amountCents }
         if (used + amountCents > transaction.amountCents) {
-            return "Only ${Money.format(transaction.amountCents - used)} left to split"
+            return error("Only ${Money.format(transaction.amountCents - used)} left to split")
         }
-        db.splitDao().upsert(SplitEntity(UUID.randomUUID().toString(), transactionId, amountCents, categoryId.takeIf { owed == null }, owed, clock.millis()))
-        return null
+        val split = SplitEntity(UUID.randomUUID().toString(), transactionId, amountCents, categoryId.takeIf { owed == null }, owed, clock.millis())
+        db.splitDao().upsert(split)
+        return Result.success(split.id)
     }
 
     suspend fun deleteSplit(id: String) = db.splitDao().delete(id, clock.millis())
 
     fun observeOwed(): Flow<List<SplitEntity>> = db.splitDao().observeOwed()
 
-    /** Marks an owed portion paid back (or not, to undo). */
-    suspend fun setSettled(splitId: String, settled: Boolean) {
+    // --- Owed to me ---
+
+    fun observeSettlements(): Flow<List<SettlementEntity>> = db.settlementDao().observeActive()
+
+    /** Who owes you what: owed parts of live purchases minus what they paid back, one balance per person. */
+    fun observeBalances(): Flow<List<Balance>> =
+        combine(observeOwed(), observeTransactions(), observeSettlements()) { owed, live, settlements -> balancesOf(owed, live, settlements) }
+
+    suspend fun balances(): List<Balance> = observeBalances().first()
+
+    /** People you split with lately, newest first: the "½ with Sam" chips. */
+    fun observeRecentPeople(limit: Int = 2): Flow<List<String>> = observeOwed().map { recentPeople(it, limit) }
+
+    suspend fun recentPeople(limit: Int = 2): List<String> = recentPeople(db.splitDao().getOwed(), limit)
+
+    /**
+     * [person] paid you back [cents], against their balance. With [depositId], that deposit was
+     * the money: it becomes a transfer (not income, not money back), since what they owed never
+     * counted as your spending. [callItEven] settles their whole balance, the difference absorbed
+     * as your spending (or money back). Returns the payment's id, for undo.
+     */
+    suspend fun settle(person: String, cents: Long, depositId: String? = null, callItEven: Boolean = false): String? {
+        if (cents <= 0 || person.isBlank()) return null
+        val balance = balances().firstOrNull { People.same(it.person, person) }
+        val deposit = depositId?.let { transactions.getById(it) ?: return null }
         val now = clock.millis()
-        db.splitDao().setSettled(splitId, if (settled) now else null, now)
+        val settlement = SettlementEntity(
+            id = UUID.randomUUID().toString(),
+            person = balance?.person ?: person.trim(),
+            amountCents = cents,
+            transactionId = deposit?.id,
+            differenceCents = if (callItEven && balance != null) balance.balanceCents - cents else 0,
+            occurredAt = deposit?.occurredAt ?: now,
+            updatedAt = now,
+        )
+        db.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                db.settlementDao().upsert(settlement)
+                if (deposit != null) {
+                    transactions.upsert(
+                        deposit.copy(
+                            kind = Kind.TRANSFER.name,
+                            status = TransactionStatus.CONFIRMED.name,
+                            categoryId = null,
+                            categorySource = null,
+                            note = deposit.note ?: paidBackNote(settlement.person),
+                            updatedAt = now,
+                        ),
+                    )
+                }
+            }
+        }
+        return settlement.id
+    }
+
+    /**
+     * Takes a payment back. Its deposit returns to the inbox: as [restore] (what it was before
+     * settling, for undo right after), or as money in to sort.
+     */
+    suspend fun undoSettlement(id: String, restore: TransactionEntity? = null) {
+        val settlement = db.settlementDao().getById(id) ?: return
+        val now = clock.millis()
+        db.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                db.settlementDao().delete(id, now)
+                val deposit = settlement.transactionId?.let { transactions.getById(it) }
+                when {
+                    deposit == null -> {}
+                    restore != null && restore.id == deposit.id -> transactions.upsert(restore.copy(updatedAt = now))
+                    else -> transactions.upsert(
+                        deposit.copy(
+                            kind = Kind.INCOME.name,
+                            status = TransactionStatus.CAPTURED.name,
+                            note = deposit.note?.takeIf { it != paidBackNote(settlement.person) },
+                            updatedAt = now,
+                        ),
+                    )
+                }
+            }
+        }
     }
 
     /** How many things wait in the inbox. */
@@ -134,6 +224,14 @@ class LedgerRepository(
     }
 
     suspend fun getTransaction(id: String): TransactionEntity? = transactions.getById(id)
+
+    /** A capture as its notification shows it: names looked up. */
+    suspend fun captured(id: String): CapturePipeline.Outcome.Captured? {
+        val transaction = transactions.getById(id) ?: return null
+        val merchant = transaction.merchantId?.let { db.merchantDao().getById(it) }
+        val category = transaction.categoryId?.let { categoryId -> db.categoryDao().getActive().firstOrNull { it.id == categoryId } }
+        return CapturePipeline.Outcome.Captured(transaction, merchant?.name, category?.name)
+    }
 
     /**
      * Whether this one transaction counts toward the everyday number, whatever its category
@@ -224,37 +322,6 @@ class LedgerRepository(
         return transaction
     }
 
-    /**
-     * [transactionId] is [splitId]'s owed part being paid back: the part is settled, and the
-     * money moves between you and them (a transfer), since the owed part never counted as
-     * your spending.
-     */
-    suspend fun settleOwedWith(transactionId: String, splitId: String): Boolean {
-        val transaction = transactions.getById(transactionId) ?: return false
-        val split = db.splitDao().getById(splitId)?.takeIf { it.owedBy != null && it.settledAt == null && !it.deleted } ?: return false
-        val now = clock.millis()
-        db.useWriterConnection { connection ->
-            connection.immediateTransaction {
-                db.splitDao().setSettled(split.id, transaction.occurredAt, now)
-                transactions.upsert(
-                    transaction.copy(
-                        kind = Kind.TRANSFER.name,
-                        status = TransactionStatus.CONFIRMED.name,
-                        categoryId = null,
-                        categorySource = null,
-                        note = transaction.note ?: "${split.owedBy} paid back",
-                        updatedAt = now,
-                    ),
-                )
-            }
-        }
-        return true
-    }
-
-    /** Owed parts not paid back yet, for matching money that comes in. */
-    suspend fun openOwedParts(): List<OwedPart> =
-        db.splitDao().getOwed().filter { it.settledAt == null }.map { OwedPart(it.id, it.owedBy!!, it.amountCents) }
-
     /** Known merchants for the quick entry suggestions: most confirmed first. */
     fun observeMerchantChoices(): Flow<List<MerchantEntity>> = db.merchantDao().observeAll()
         .map { all -> all.filter { !it.deleted }.sortedWith(compareByDescending<MerchantEntity> { it.confirmCount }.thenBy { it.name.lowercase() }) }
@@ -269,5 +336,26 @@ class LedgerRepository(
 
     companion object {
         const val CURRENCY = "CAD"
+
+        fun paidBackNote(person: String) = "$person paid back"
     }
 }
+
+/** Balances from the database's rows: owed parts of live purchases (deleted ones drop out) and payments. */
+fun balancesOf(owed: List<SplitEntity>, live: List<TransactionEntity>, settlements: List<SettlementEntity>): List<Balance> {
+    val byId = live.associateBy { it.id }
+    return Balances.of(
+        owed.mapNotNull { split ->
+            val purchase = byId[split.transactionId] ?: return@mapNotNull null
+            val person = split.owedBy ?: return@mapNotNull null
+            Owed(split.id, person, split.amountCents, purchase.occurredAt, purchase.categoryId, purchase.id, settledBefore = split.settledAt != null)
+        },
+        settlements.filter { !it.deleted }.map { Repayment(it.id, it.person, it.amountCents, it.differenceCents, it.occurredAt, it.transactionId) },
+    )
+}
+
+/** Who you split with most recently, for the capture notification's "½ Sam". */
+suspend fun TallyDatabase.recentSplitPerson(): String? = recentPeople(splitDao().getOwed(), 1).firstOrNull()
+
+private fun recentPeople(owed: List<SplitEntity>, limit: Int): List<String> =
+    People.recent(owed.filter { !it.deleted }.sortedByDescending { it.updatedAt }.mapNotNull { it.owedBy }, limit)

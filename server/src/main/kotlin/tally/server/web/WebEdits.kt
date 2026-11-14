@@ -75,24 +75,36 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
     }
 
     /**
-     * Money in that pays back an "owed to me" part: the part is settled and the money is a
-     * transfer (the owed part never counted as your spending), as on the phone.
+     * Money in that pays back someone who owes you ([person], for a deposit with no name): a
+     * payment against their balance, and the deposit a transfer (what they owed never counted
+     * as your spending), as on the phone. [callItEven] settles the whole balance, the difference
+     * absorbed. Returns who paid, or null if there was nothing to settle.
      */
-    fun settle(transactionId: String, splitId: String, source: String = WEB): Boolean {
+    fun settle(transactionId: String, callItEven: Boolean, person: String? = null, source: String = WEB): String? {
         val s = snapshot()
-        val t = s.transactions.find { it.id == transactionId } ?: return false
-        val split = s.splits.values.flatten().find { it.id == splitId }?.takeIf { it.owedBy != null && it.settledAt == null } ?: return false
+        val t = s.needsReview.find { it.id == transactionId } ?: return null
+        val balance = s.payer(t, person) ?: return null
+        val received = -t.amountCents
         val now = clock.millis()
+        val settlement = SettlementRow(
+            id = UUID.randomUUID().toString(),
+            person = balance.person,
+            amountCents = received,
+            transactionId = t.id,
+            differenceCents = if (callItEven) balance.balanceCents - received else 0,
+            occurredAt = t.occurredAt,
+            updatedAt = now,
+        )
         sync.write(
             listOf(
-                Rows.splits.encode(split.copy(settledAt = t.occurredAt, updatedAt = now), s.stored(Rows.splits.table, split.id)),
+                Rows.settlements.encode(settlement, null),
                 Rows.transactions.encode(
                     t.copy(
                         kind = Kind.TRANSFER.name,
                         status = TransactionStatus.CONFIRMED.name,
                         categoryId = null,
                         categorySource = null,
-                        note = t.note ?: "${split.owedBy} paid back",
+                        note = t.note ?: "${balance.person} paid back",
                         updatedAt = now,
                     ),
                     s.stored(Rows.transactions.table, t.id),
@@ -100,7 +112,7 @@ class WebEdits(private val sync: SyncServer, private val clock: Clock = Clock.sy
             ),
             source,
         )
-        return true
+        return balance.person
     }
 
     /** "Not a purchase": deleted, as the notification's Ignore does. */

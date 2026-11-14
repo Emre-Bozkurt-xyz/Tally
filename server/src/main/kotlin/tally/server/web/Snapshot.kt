@@ -6,8 +6,11 @@ import tally.core.model.Kind
 import tally.core.model.TransactionStatus
 import tally.core.report.Counting
 import tally.core.report.LedgerEntry
-import tally.core.report.OwedMatch
-import tally.core.report.OwedPart
+import tally.core.report.Balance
+import tally.core.report.Balances
+import tally.core.report.Owed
+import tally.core.report.People
+import tally.core.report.Repayment
 import tally.core.report.SplitPart
 import tally.core.report.withSplits
 import tally.core.sync.SyncServer
@@ -30,6 +33,7 @@ class Snapshot(
     merchants: List<MerchantRow>,
     val aliases: List<AliasRow>,
     val rules: List<RuleRow>,
+    settlements: List<SettlementRow> = emptyList(),
     /** The stored JSON per table and id, so edits keep columns this server doesn't know. */
     private val stored: Map<String, Map<String, JsonObject>> = emptyMap(),
 ) {
@@ -84,14 +88,30 @@ class Snapshot(
 
     fun date(t: TransactionRow): LocalDate = Instant.ofEpochMilli(t.occurredAt).atZone(zoneOf(t)).toLocalDate()
 
-    /** "Owed to me" parts not paid back yet, oldest first. */
-    val openOwed: List<OwedPart> = splits.filter { !it.deleted && it.owedBy != null && it.settledAt == null }
-        .sortedBy { it.updatedAt }
-        .map { OwedPart(it.id, it.owedBy!!, it.amountCents) }
+    /** Who owes you what: owed parts of live purchases minus what they paid back, one balance per person. */
+    val balances: List<Balance> = this.transactions.associateBy { it.id }.let { live ->
+        Balances.of(
+            splits.filter { !it.deleted && it.owedBy != null }.mapNotNull { split ->
+                val t = live[split.transactionId] ?: return@mapNotNull null
+                Owed(split.id, split.owedBy!!, split.amountCents, t.occurredAt, t.categoryId, t.id, settledBefore = split.settledAt != null)
+            },
+            settlements.filter { !it.deleted }.map { Repayment(it.id, it.person, it.amountCents, it.differenceCents, it.occurredAt, it.transactionId) },
+        )
+    }
 
-    /** The open owed part money in from [t]'s sender pays back, if any. */
-    fun settles(t: TransactionRow): OwedPart? =
-        if (t.amountCents < 0) OwedMatch.find(merchantName(t), -t.amountCents, openOwed) else null
+    /** People who owe you something, most first. */
+    val owing: List<Balance> = balances.filter { it.balanceCents > 0 }
+
+    /** Money in that isn't a transfer, and whose sender (or the deposit alert) names no one. */
+    fun isDeposit(t: TransactionRow) = t.amountCents < 0 && t.kind != Kind.TRANSFER.name
+
+    fun senderOf(t: TransactionRow): String? = t.merchantId?.let { merchantsById[it]?.name } ?: t.merchantRaw
+
+    /** Who money in from [t] pays back: its sender if they owe you, or [picked] for a deposit with no name. */
+    fun payer(t: TransactionRow, picked: String? = null): Balance? {
+        if (!isDeposit(t)) return null
+        return if (picked != null) owing.firstOrNull { People.same(it.person, picked) } else Balances.forSender(senderOf(t), owing)
+    }
 
     /** Under the top-level "Income" category (money in there is income, elsewhere it's money back). */
     fun isIncomeCategory(categoryId: String?): Boolean {
@@ -107,7 +127,7 @@ class Snapshot(
         val kind = runCatching { Kind.valueOf(t.kind) }.getOrDefault(Kind.EXPENSE)
         LedgerEntry(t.amountCents, kind, t.categoryId, date(t), t.merchantId, t.counted)
             .withSplits(this.splits[t.id].orEmpty().map { SplitPart(it.amountCents, it.categoryId, it.owedBy) })
-    }
+    } + Balances.differenceEntries(balances, HOME_ZONE)
 
     companion object {
         fun load(sync: SyncServer): Snapshot {
@@ -128,10 +148,14 @@ class Snapshot(
                 merchants = read(Rows.merchants),
                 aliases = read(Rows.aliases),
                 rules = read(Rows.rules),
+                settlements = read(Rows.settlements),
                 stored = raw,
             )
         }
 
-        private fun zoneOf(t: TransactionRow): ZoneId = runCatching { ZoneId.of(t.zoneId) }.getOrDefault(ZoneId.of("America/Toronto"))
+        /** Where dates without a transaction of their own (a settle-up) fall. */
+        private val HOME_ZONE: ZoneId = ZoneId.of("America/Toronto")
+
+        private fun zoneOf(t: TransactionRow): ZoneId = runCatching { ZoneId.of(t.zoneId) }.getOrDefault(HOME_ZONE)
     }
 }

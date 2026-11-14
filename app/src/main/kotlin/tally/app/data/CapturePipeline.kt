@@ -57,6 +57,8 @@ class CapturePipeline(
             val transaction: TransactionEntity,
             val merchantName: String?,
             val categoryName: String?,
+            /** "Sam owes $6.49", once split from the notification. */
+            val owedNote: String? = null,
         ) : Outcome {
             /** Still waiting for you: show (or update) the capture notification. */
             val needsReview get() = !transaction.deleted && transaction.status == TransactionStatus.CAPTURED.name

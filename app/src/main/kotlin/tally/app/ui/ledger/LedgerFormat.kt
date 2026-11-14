@@ -1,8 +1,14 @@
 package tally.app.ui.ledger
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import tally.app.data.CategoryEntity
+import tally.app.data.LedgerRepository
+import tally.app.data.SettlementEntity
 import tally.app.data.SplitEntity
 import tally.app.data.TransactionEntity
+import tally.app.data.balancesOf
+import tally.core.report.Balances
 import tally.core.model.Kind
 import tally.core.model.Source
 import tally.core.report.Counting
@@ -20,6 +26,26 @@ import java.time.format.DateTimeFormatter
 fun TransactionEntity.ledgerEntries(splits: List<SplitEntity>): List<LedgerEntry> =
     LedgerEntry(amountCents, Kind.valueOf(kind), categoryId, occurredAtLocal().toLocalDate(), merchantId, counted)
         .withSplits(splits.map { SplitPart(it.amountCents, it.categoryId, it.owedBy) })
+
+/**
+ * Everything reports count: each live transaction with its splits expanded, plus what calling
+ * it even with someone absorbed (a shortfall is your spending, an overpayment money back).
+ */
+fun LedgerRepository.observeLedgerEntries(): Flow<List<LedgerEntry>> =
+    combine(observeTransactions(), observeAllSplits(), observeSettlements()) { transactions, splits, settlements ->
+        ledgerEntriesOf(transactions, splits, settlements)
+    }
+
+fun ledgerEntriesOf(
+    transactions: List<TransactionEntity>,
+    splits: List<SplitEntity>,
+    settlements: List<SettlementEntity>,
+    zone: ZoneId = ZoneId.systemDefault(),
+): List<LedgerEntry> {
+    val byTransaction = splits.groupBy { it.transactionId }
+    val balances = balancesOf(splits.filter { it.owedBy != null }, transactions, settlements)
+    return transactions.flatMap { it.ledgerEntries(byTransaction[it.id].orEmpty()) } + Balances.differenceEntries(balances, zone)
+}
 
 /** What counts toward the everyday number, from these categories' switches (deleted ones included). */
 fun List<CategoryEntity>.counting(): Counting {

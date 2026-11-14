@@ -59,7 +59,7 @@ import tally.app.ui.components.groupShape
 import tally.app.ui.ledger.counting
 import tally.app.ui.ledger.dayLabel
 import tally.app.ui.ledger.fallbackTitle
-import tally.app.ui.ledger.ledgerEntries
+import tally.app.ui.ledger.observeLedgerEntries
 import tally.app.ui.ledger.occurredAtLocal
 import tally.app.ui.theme.Tally
 import tally.app.ui.theme.TallyIcons
@@ -98,7 +98,7 @@ fun HomeScreen(
     onOpenTransaction: (String) -> Unit,
 ) {
     val transactions by remember { ledger.observeTransactions() }.collectAsStateWithLifecycle(initialValue = null)
-    val splits by remember { ledger.observeAllSplits() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val entries by remember { ledger.observeLedgerEntries() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val categories by remember { ledger.observeAllCategories() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val merchants by remember { ledger.observeAllMerchants() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val accounts by remember { ledger.observeAllAccounts() }.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -109,10 +109,6 @@ fun HomeScreen(
     val byId = remember(categories) { categories.associateBy { it.id } }
     val merchantNames = remember(merchants) { merchants.associate { it.id to it.name } }
     val accountNames = remember(accounts) { accounts.associate { it.id to it.name } }
-    val entries = remember(transactions, splits) {
-        val bySplit = splits.groupBy { it.transactionId }
-        transactions.orEmpty().flatMap { it.ledgerEntries(bySplit[it.id].orEmpty()) }
-    }
     val counting = remember(categories) { categories.counting() }
     val summary = remember(entries, byId, counting) { MonthSummary.of(month, entries, counting) { byId[it]?.parentId } }
     // Everyday spending only: what the chart, the bars and "Where it went" show.

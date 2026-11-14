@@ -18,7 +18,7 @@ class CategorySuggester(
     private val ask: suspend (CategorizeRequest) -> CategorizeResponse,
     private val clock: Clock = Clock.systemUTC(),
     /** Called for each suggestion made, e.g. to update its capture notification. */
-    private val onSuggested: (CapturePipeline.Outcome.Captured) -> Unit = {},
+    private val onSuggested: suspend (CapturePipeline.Outcome.Captured) -> Unit = {},
 ) {
     /** Returns how many captures got a suggestion. Server errors stop the run (tried again next sync). */
     suspend fun suggestPending(): Int {

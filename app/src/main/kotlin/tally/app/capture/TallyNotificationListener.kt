@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import tally.app.appContainer
 import tally.app.data.CapturePipeline
 import tally.app.data.RawEventEntity
+import tally.app.data.recentSplitPerson
 import tally.core.capture.WatchedPackages
 import tally.core.model.ParseStatus
 import java.time.ZoneId
@@ -44,7 +45,7 @@ class TallyNotificationListener : NotificationListenerService() {
                 if (!container.rawEvents.record(event)) return@launch
                 val outcome = container.capture.process(event)
                 if (outcome is CapturePipeline.Outcome.Captured) {
-                    CaptureNotifier.onCaptured(this@TallyNotificationListener, outcome)
+                    CaptureNotifier.onCaptured(this@TallyNotificationListener, outcome, container.database.recentSplitPerson())
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "Couldn't store or process notification from $pkg", t)

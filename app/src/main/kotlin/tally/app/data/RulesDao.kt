@@ -96,6 +96,21 @@ interface SplitDao {
     suspend fun delete(id: String, now: Long)
 }
 
+@Dao
+interface SettlementDao {
+    @Upsert
+    suspend fun upsert(settlement: SettlementEntity)
+
+    @Query("SELECT * FROM settlements WHERE NOT deleted")
+    fun observeActive(): Flow<List<SettlementEntity>>
+
+    @Query("SELECT * FROM settlements WHERE id = :id AND NOT deleted")
+    suspend fun getById(id: String): SettlementEntity?
+
+    @Query("UPDATE settlements SET deleted = 1, updatedAt = :now WHERE id = :id")
+    suspend fun delete(id: String, now: Long)
+}
+
 fun RuleEntity.toRule() = Rule(
     id = id,
     priority = priority,

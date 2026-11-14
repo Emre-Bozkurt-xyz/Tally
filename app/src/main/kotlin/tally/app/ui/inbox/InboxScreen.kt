@@ -29,8 +29,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -73,8 +77,13 @@ import tally.app.ui.theme.TallyIcons
 import tally.core.model.Money
 import tally.core.capture.WatchedPackages
 import tally.core.model.CategoryKinds
-import tally.core.report.OwedMatch
-import tally.core.report.OwedPart
+import tally.app.ui.components.PillChip
+import tally.app.ui.split.QuickSplitRow
+import tally.app.ui.split.SplitSheet
+import tally.core.model.Kind
+import tally.core.report.Balance
+import tally.core.report.Balances
+import tally.core.report.Offer
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -110,13 +119,59 @@ fun InboxScreen(
     val chips = remember(activeCategories) { activeCategories.chipCategories() }
     var picking by remember { mutableStateOf<TransactionEntity?>(null) }
     val today = LocalDate.now()
-    // Open "owed to me" parts, for money in that pays one back. Re-read as the inbox changes.
-    val owed by produceState(initialValue = emptyList<OwedPart>(), review) { value = ledger.openOwedParts() }
+    // Who owes you what, for money in that pays it back; who you split with lately, for "½ with Sam".
+    val balances by remember { ledger.observeBalances() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val people by remember { ledger.observeRecentPeople() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val splits by remember { ledger.observeAllSplits() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val splitsFor = remember(splits) { splits.groupBy { it.transactionId } }
+    val owing = balances.filter { it.balanceCents > 0 }
+    // A deposit with no name you said came from someone: transaction id to their name.
+    val fromSomeone = remember { mutableStateMapOf<String, String>() }
+    var splitting by remember { mutableStateOf<Pair<TransactionEntity, String?>?>(null) }
 
     fun nameOf(transaction: TransactionEntity) = transaction.merchantId?.let { merchantNames[it] } ?: transaction.merchantRaw
 
-    fun settles(transaction: TransactionEntity): OwedPart? =
-        if (transaction.amountCents < 0) OwedMatch.find(nameOf(transaction), -transaction.amountCents, owed) else null
+    fun isDeposit(transaction: TransactionEntity) = transaction.amountCents < 0 && transaction.kind != Kind.TRANSFER.name
+
+    /** Who money in pays back: the sender, if they owe you, or whoever you picked for an unnamed deposit. */
+    fun payer(transaction: TransactionEntity): Balance? {
+        if (!isDeposit(transaction)) return null
+        val picked = fromSomeone[transaction.id]
+        val balance = if (picked != null) owing.firstOrNull { it.person == picked } else Balances.forSender(nameOf(transaction), owing)
+        return balance?.takeIf { it.balanceCents > 0 }
+    }
+
+    fun settle(transaction: TransactionEntity, balance: Balance, callItEven: Boolean) {
+        val received = -transaction.amountCents
+        val first = balance.person.substringBefore(' ')
+        val left = if (callItEven) 0 else balance.balanceCents - received
+        scope.launch {
+            val id = ledger.settle(balance.person, received, transaction.id, callItEven) ?: return@launch
+            fromSomeone.remove(transaction.id)
+            CaptureNotifier.cancel(context, transaction.id)
+            val message = when {
+                callItEven -> "Even with $first"
+                left > 0 -> "$first paid ${Money.format(received)} · ${Money.format(left)} still owed"
+                left < 0 -> "$first paid ${Money.format(received)} · ${Money.format(-left)} credit"
+                else -> "$first paid you back"
+            }
+            if (snackbar.showSnackbar(message, actionLabel = "Undo", duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
+                ledger.undoSettlement(id, restore = transaction)
+            }
+        }
+    }
+
+    fun splitWith(transaction: TransactionEntity, person: String, cents: Long) {
+        scope.launch {
+            val id = ledger.splitWith(transaction.id, person, cents).getOrNull() ?: return@launch
+            val result = snackbar.showSnackbar(
+                "${person.substringBefore(' ')} owes ${Money.format(cents)}",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) ledger.deleteSplit(id)
+        }
+    }
 
     fun incomeCategory(categoryId: String): Boolean {
         val category = byId[categoryId] ?: return false
@@ -125,11 +180,8 @@ fun InboxScreen(
     }
 
     fun accept(transaction: TransactionEntity) {
-        settles(transaction)?.let { part ->
-            scope.launch {
-                ledger.settleOwedWith(transaction.id, part.splitId)
-                snackbar.showSnackbar("${part.owedBy} paid back ${displayAmount(part.amountCents)}")
-            }
+        payer(transaction)?.let { balance ->
+            settle(transaction, balance, callItEven = Balances.offer(balance.balanceCents, -transaction.amountCents) is Offer.Close)
             return
         }
         if (transaction.categoryId == null) {
@@ -160,7 +212,8 @@ fun InboxScreen(
             }
             items(transactions.orEmpty(), key = { it.id }) { transaction ->
                 val merchantName = nameOf(transaction)
-                val settling = settles(transaction)
+                val settling = payer(transaction)
+                val offer = settling?.let { Balances.offer(it.balanceCents, -transaction.amountCents) }
                 val categoryName = transaction.categoryId?.let { byId[it]?.name }
                 val moneyBack = transaction.amountCents < 0 && transaction.categoryId != null && !incomeCategory(transaction.categoryId)
                 SwipeRow(
@@ -181,7 +234,8 @@ fun InboxScreen(
                             "${dayLabel(transaction.occurredAtLocal().toLocalDate(), today)} ${TIME_FORMAT.format(transaction.occurredAtLocal())}",
                         ).joinToString(" · "),
                         suggestion = when {
-                            settling != null -> "Settles ${settling.owedBy}'s ${displayAmount(settling.amountCents)}"
+                            settling != null -> "${settling.person} owes ${Money.format(settling.balanceCents)}" +
+                                settling.open.size.let { n -> " ($n item${if (n == 1) "" else "s"})" }
                             categoryName != null -> categoryName
                             transaction.amountCents < 0 -> "Money in: income, or what it pays back?"
                             else -> null
@@ -193,9 +247,34 @@ fun InboxScreen(
                             else -> null
                         },
                         acceptLabel = when {
+                            offer is Offer.Close -> "Call it even"
                             settling != null -> "Settle"
                             transaction.categoryId == null -> "Pick category"
                             else -> "Accept"
+                        },
+                        extra = when {
+                            settling != null && offer != null -> {
+                                { SettleChoices(settling, offer, picked = transaction.id in fromSomeone, onKeep = { settle(transaction, settling, callItEven = false) }, onNotThem = { fromSomeone.remove(transaction.id) }) }
+                            }
+                            isDeposit(transaction) && merchantName.isNullOrBlank() && owing.isNotEmpty() -> {
+                                { FromSomeone(owing) { fromSomeone[transaction.id] = it.person } }
+                            }
+                            transaction.amountCents > 0 && transaction.kind == Kind.EXPENSE.name &&
+                                (people.isNotEmpty() || splitsFor[transaction.id].orEmpty().any { it.owedBy != null }) -> {
+                                {
+                                    val parts = splitsFor[transaction.id].orEmpty()
+                                    QuickSplitRow(
+                                        people = people,
+                                        amountCents = transaction.amountCents,
+                                        leftCents = transaction.amountCents - parts.sumOf { it.amountCents },
+                                        owed = parts,
+                                        onSplit = { person, cents -> splitWith(transaction, person, cents) },
+                                        onRemove = { part -> scope.launch { ledger.deleteSplit(part.id) } },
+                                        onMore = { person -> splitting = transaction to person },
+                                    )
+                                }
+                            }
+                            else -> null
                         },
                         onAccept = { accept(transaction) },
                         onChange = { picking = transaction },
@@ -231,6 +310,17 @@ fun InboxScreen(
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = LocalBottomClearance.current))
+    }
+
+    splitting?.let { (transaction, person) ->
+        SplitSheet(
+            amountCents = transaction.amountCents,
+            leftCents = transaction.amountCents - splitsFor[transaction.id].orEmpty().sumOf { it.amountCents },
+            people = people,
+            initialPerson = person,
+            onSplit = { who, cents -> ledger.splitWith(transaction.id, who, cents).exceptionOrNull()?.message },
+            onDismiss = { splitting = null },
+        )
     }
 
     picking?.let { transaction ->
@@ -286,6 +376,7 @@ private fun CaptureCard(
     onAccept: () -> Unit,
     onChange: () -> Unit,
     onOpen: () -> Unit,
+    extra: (@Composable () -> Unit)? = null,
 ) {
     Column(
         Modifier
@@ -330,6 +421,9 @@ private fun CaptureCard(
                 overflow = TextOverflow.Ellipsis,
             )
             tag?.let { (text, tone) -> StatusPill(text, tone = tone) }
+        }
+        if (extra != null) {
+            Box(Modifier.padding(top = 12.dp)) { extra() }
         }
         Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PillButton("Change", onChange, Modifier.weight(1f), style = PillStyle.Soft, height = 44.dp)
@@ -407,4 +501,55 @@ private fun SwipeRow(
             }
         },
     ) { content() }
+}
+
+/**
+ * What else money from someone who owes you can do: keep the small difference owing (or as
+ * credit) instead of calling it even, or what settling leaves when it's further off.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SettleChoices(balance: Balance, offer: Offer, picked: Boolean, onKeep: () -> Unit, onNotThem: () -> Unit) {
+    val first = balance.person.substringBefore(' ')
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        when (offer) {
+            is Offer.Close -> PillChip(
+                if (offer.differenceCents > 0) "Keep ${Money.format(offer.differenceCents)} owing" else "Keep ${Money.format(-offer.differenceCents)} as credit",
+                selected = false,
+                onClick = onKeep,
+            )
+            is Offer.Partial -> Text(
+                "Settling leaves ${Money.format(offer.leftCents)} owing",
+                style = MaterialTheme.typography.bodySmall,
+                color = Tally.colors.muted,
+            )
+            is Offer.Over -> Text(
+                "That's ${Money.format(offer.creditCents)} more than $first owes: settling keeps it as credit",
+                style = MaterialTheme.typography.bodySmall,
+                color = Tally.colors.muted,
+            )
+            Offer.Exact -> {}
+        }
+        if (picked) PillChip("Not $first", selected = false, onClick = onNotThem, trailing = TallyIcons.Close)
+    }
+}
+
+/** A deposit with no name: was it someone paying you back? */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FromSomeone(owing: List<Balance>, onPick: (Balance) -> Unit) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        MonoLabel("From someone?")
+        owing.take(3).forEach { balance ->
+            PillChip("${balance.person.substringBefore(' ')} · ${Money.format(balance.balanceCents)}", selected = false, onClick = { onPick(balance) })
+        }
+    }
 }
