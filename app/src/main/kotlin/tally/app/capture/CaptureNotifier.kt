@@ -28,6 +28,8 @@ import tally.core.model.CategorySource
 object CaptureNotifier {
     private const val CHANNEL_ID = "captures"
     private const val NOTIFICATION_ID = 1 // Tagged with the transaction id, so one per transaction.
+    private const val MAX_EACH = 3
+    private const val MORE_TAG = "server-more"
 
     fun createChannel(context: Context) {
         val channel = NotificationChannel(CHANNEL_ID, "Captured purchases", NotificationManager.IMPORTANCE_LOW).apply {
@@ -94,6 +96,35 @@ object CaptureNotifier {
             .addAction(0, "Ignore", action(context, CaptureActionReceiver.ACTION_IGNORE, transaction.id))
             .build()
         NotificationManagerCompat.from(context).notify(transaction.id, NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * Captures a sync brought from the server (receipts by email, statement rows): the usual
+     * notification for the newest few, then one line for the rest.
+     */
+    fun onServerAdded(context: Context, captured: List<CapturePipeline.Outcome.Captured>, splitWith: String?) {
+        val newest = captured.sortedByDescending { it.transaction.occurredAt }
+        newest.take(MAX_EACH).forEach { onCaptured(context, it, splitWith) }
+        val rest = newest.size - MAX_EACH
+        if (rest <= 0) return
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val open = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_tally)
+            .setColor(ContextCompat.getColor(context, R.color.accent))
+            .setContentTitle("$rest more to review")
+            .setContentText("From receipts and statements, waiting in the inbox")
+            .setOnlyAlertOnce(true)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(open)
+            .build()
+        NotificationManagerCompat.from(context).notify(MORE_TAG, NOTIFICATION_ID, notification)
     }
 
     /** Whether the capture's notification is still in the shade (not swiped away or handled). */

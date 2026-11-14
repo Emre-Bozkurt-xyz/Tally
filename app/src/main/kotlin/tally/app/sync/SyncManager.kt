@@ -23,7 +23,10 @@ import kotlinx.serialization.SerializationException
 import tally.app.appContainer
 import tally.app.capture.CaptureNotifier
 import tally.app.data.TallyDatabase
+import tally.app.data.TransactionEntity
+import tally.app.data.captured
 import tally.app.data.recentSplitPerson
+import tally.core.model.Source
 import tally.core.sync.SyncProtocol
 import java.io.IOException
 import java.time.Clock
@@ -56,10 +59,22 @@ class SyncManager(
         data class Failed(val message: String, val retry: Boolean) : Outcome
     }
 
+    /**
+     * Captures this sync brought that the phone didn't make (receipts by email, statement rows)
+     * get the capture notification, as the phone's own do. Old ones (a statement's first weeks)
+     * just wait in the inbox.
+     */
+    private suspend fun notifyServerAdded(waitingBefore: Set<String>) {
+        val fresh = newServerCaptures(waitingBefore, db.transactionDao().observeNeedsReview().first(), clock.millis())
+        if (fresh.isEmpty()) return
+        CaptureNotifier.onServerAdded(context, fresh.mapNotNull { db.captured(it.id) }, db.recentSplitPerson())
+    }
+
     suspend fun syncNow(): Outcome {
         if (!settings.currentServer().isComplete) return Outcome.Failed("Sync isn't set up", retry = false)
         // Before syncing, so the suggestions go up in the same sync.
         val suggested = suggestCategories()
+        val waiting = db.transactionDao().observeNeedsReview().first().map { it.id }.toSet()
         val outcome = try {
             Outcome.Synced(client.sync(), suggested)
         } catch (e: CancellationException) {
@@ -71,6 +86,10 @@ class SyncManager(
         } catch (e: SerializationException) {
             // A row this version can't read: an app update is needed, retrying won't help.
             Outcome.Failed("Unreadable data from the server: ${e.message}", retry = false)
+        }
+        if (outcome is Outcome.Synced && "transactions" in outcome.result.pulledTables) {
+            runCatching { notifyServerAdded(waiting) }
+                .onFailure { if (it is CancellationException) throw it else Log.w(TAG, "Server captures: ${it.message}") }
         }
         if (outcome is Outcome.Synced && outcome.result.pulledTables.isNotEmpty()) {
             runCatching { afterPull(outcome.result.pulledTables) }
@@ -173,6 +192,13 @@ class SyncManager(
 
     companion object {
         private const val TAG = "TallySync"
+        /** Captures only the server makes: receipts by email and statement rows. */
+        private val SERVER_SOURCES = setOf(Source.EMAIL.name, Source.CSV.name)
+        private const val SERVER_CAPTURE_MAX_AGE_MS = 7 * 24 * 3_600_000L
+
+        /** What a sync brought into the inbox from the server, recent enough to notify about. */
+        fun newServerCaptures(waitingBefore: Set<String>, waitingNow: List<TransactionEntity>, now: Long): List<TransactionEntity> =
+            waitingNow.filter { it.id !in waitingBefore && it.source in SERVER_SOURCES && it.occurredAt >= now - SERVER_CAPTURE_MAX_AGE_MS }
         private const val SOON = "sync-soon"
         private const val PERIODIC = "sync-periodic"
         /** Long enough to batch a burst (a capture writes several rows), short enough to feel live. */

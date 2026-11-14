@@ -226,12 +226,7 @@ class LedgerRepository(
     suspend fun getTransaction(id: String): TransactionEntity? = transactions.getById(id)
 
     /** A capture as its notification shows it: names looked up. */
-    suspend fun captured(id: String): CapturePipeline.Outcome.Captured? {
-        val transaction = transactions.getById(id) ?: return null
-        val merchant = transaction.merchantId?.let { db.merchantDao().getById(it) }
-        val category = transaction.categoryId?.let { categoryId -> db.categoryDao().getActive().firstOrNull { it.id == categoryId } }
-        return CapturePipeline.Outcome.Captured(transaction, merchant?.name, category?.name)
-    }
+    suspend fun captured(id: String): CapturePipeline.Outcome.Captured? = db.captured(id)
 
     /**
      * Whether this one transaction counts toward the everyday number, whatever its category
@@ -352,6 +347,14 @@ fun balancesOf(owed: List<SplitEntity>, live: List<TransactionEntity>, settlemen
         },
         settlements.filter { !it.deleted }.map { Repayment(it.id, it.person, it.amountCents, it.differenceCents, it.occurredAt, it.transactionId) },
     )
+}
+
+/** A capture as its notification shows it: names looked up. */
+suspend fun TallyDatabase.captured(id: String): CapturePipeline.Outcome.Captured? {
+    val transaction = transactionDao().getById(id) ?: return null
+    val merchant = transaction.merchantId?.let { merchantDao().getById(it) }
+    val category = transaction.categoryId?.let { categoryId -> categoryDao().getActive().firstOrNull { it.id == categoryId } }
+    return CapturePipeline.Outcome.Captured(transaction, merchant?.name, category?.name)
 }
 
 /** Who you split with most recently, for the capture notification's "½ Sam". */

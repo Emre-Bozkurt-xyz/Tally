@@ -45,7 +45,7 @@ setup from you (email) comes last, giving you time to make the app password.
 | 2 | Rules without a merchant (rent) and "What counts" | Nothing | **Done** |
 | 3 | Quick splits, balances per person, settling e-Transfers | Nothing | **Done** |
 | 4 | Receipts from email on the server | App password in `.env.production` | **Done** (waiting for the password) |
-| 5 | Notifications on the phone for inbox items the server adds | Nothing | To do |
+| 5 | Notifications on the phone for inbox items the server adds | Nothing | **Done** |
 
 Steps 2 and 3 are independent once step 1 is in; 2 first because it fixes the number you look
 at every day.
@@ -267,6 +267,13 @@ Rent arrives as a bare chequing withdrawal, so no merchant pattern can match it.
 The phone only notifies for its own captures. After a sync pulls a new CAPTURED transaction
 the phone didn't make (email receipts, statement imports), show the usual capture notification
 ("$78.61 · Walmart"), at most a few per sync, grouped when there are more.
+
+### Done (step 5)
+
+- [x] After a sync that pulled transactions, captures that are new to the inbox and came from
+  the server (`EMAIL`, `CSV`) and happened in the last 7 days get the usual capture
+  notification, with "½ Sam" too; the newest three each, then "N more to review".
+- [x] Test: which captures notify (`SyncManager.newServerCaptures`).
 
 ## 10. Still open, not in this phase
 
